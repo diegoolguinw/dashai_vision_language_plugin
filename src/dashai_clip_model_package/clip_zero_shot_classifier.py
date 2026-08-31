@@ -11,7 +11,7 @@ from DashAI.back.core.utils import MultilingualString
 from DashAI.back.models.base_model import BaseModel
 
 from dashai_clip_model_package.device import resolve_device
-from dashai_clip_model_package.prompts import validate_prompt_template
+from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
 
 
 class CLIPZeroShotClassifierSchema(BaseSchema):
@@ -87,8 +87,75 @@ class CLIPZeroShotClassifier(BaseModel):
         self.idx_to_label = {}
         self._text_features = None
 
+    def _extract_class_names(self, y_train):
+        if len(y_train.column_names) != 1:
+            raise ValueError("CLIPZeroShotClassifier requires exactly one output column")
+        column = y_train.column_names[0]
+        output_type = (getattr(y_train, "types", {}) or {}).get(column)
+        categories = getattr(output_type, "categories", None)
+        if categories:
+            names = list(categories)
+        else:
+            names = list(dict.fromkeys(y_train[column]))
+        if not names:
+            raise ValueError("At least one class label is required")
+        return names
+
+    def _ensure_backend(self):
+        if self.model is not None and self.processor is not None:
+            return
+        try:
+            from transformers import CLIPModel, CLIPProcessor
+
+            if self.model is None:
+                self.model = CLIPModel.from_pretrained(self.model_name)
+            if self.processor is None:
+                self.processor = CLIPProcessor.from_pretrained(self.model_name)
+            self.model.to(self.device)
+            self.model.eval()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Unable to load CLIP checkpoint '{self.model_name}'"
+            ) from exc
+
+    def _prepare_text_features(self):
+        import torch
+
+        prompts = build_prompts(self.class_names, self.prompt_template)
+        inputs = self.processor(text=prompts, padding=True, return_tensors="pt")
+        inputs = {name: value.to(self.device) for name, value in inputs.items()}
+        with torch.inference_mode():
+            text_features = self.model.get_text_features(**inputs)
+        denominator = text_features.norm(p=2, dim=-1, keepdim=True).clamp_min(
+            torch.finfo(text_features.dtype).eps
+        )
+        self._text_features = text_features / denominator
+
     def train(self, x_train, y_train, x_validation=None, y_validation=None):
-        raise NotImplementedError
+        self.class_names = self._extract_class_names(y_train)
+        self.label_to_idx = {
+            label: index for index, label in enumerate(self.class_names)
+        }
+        self.idx_to_label = {
+            index: label for label, index in self.label_to_idx.items()
+        }
+        self._text_features = None
+        self._ensure_backend()
+        self._prepare_text_features()
+        return self
+
+    def prepare_output(self, dataset, is_fit=False):
+        import pyarrow as pa
+        from DashAI.back.dataloaders.classes.dashai_dataset import DashAIDataset
+
+        if not self.label_to_idx:
+            return dataset
+        column = dataset.column_names[0]
+        try:
+            encoded = [self.label_to_idx[value] for value in dataset[column]]
+        except KeyError as exc:
+            raise ValueError(f"Unknown class label: {exc.args[0]!r}") from exc
+        return DashAIDataset(pa.table({column: encoded}))
 
     def predict(self, x):
         raise NotImplementedError
