@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dashai-clip-model-package"
+version = "0.1.0"
+description = "CLIP zero-shot image classification for dashAI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Diego Olguín-Wende", email = "dolguin@dim.uchile.cl" }]
+keywords = ["DashAI", "Model"]
+dependencies = [
+  "dashAI>=0.9.7.post2",
+  "numpy",
+  "Pillow",
+  "torch",
+  "transformers",
+]
+
+[project.entry-points.'dashai.plugins']
+CLIPZeroShotClassifier = "dashai_clip_model_package.clip_zero_shot_classifier:CLIPZeroShotClassifier"
+
+[project.optional-dependencies]
+dev = ["build", "pytest", "ruff"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dashai_clip_model_package"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not integration'"
+markers = ["integration: downloads and executes a real Hugging Face checkpoint"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
