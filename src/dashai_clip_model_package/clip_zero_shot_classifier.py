@@ -93,7 +93,7 @@ class CLIPZeroShotClassifier(BaseModel):
         column = y_train.column_names[0]
         output_type = (getattr(y_train, "types", {}) or {}).get(column)
         categories = getattr(output_type, "categories", None)
-        if categories:
+        if categories is not None:
             names = list(categories)
         else:
             names = list(dict.fromkeys(y_train[column]))
@@ -102,15 +102,14 @@ class CLIPZeroShotClassifier(BaseModel):
         return names
 
     def _ensure_backend(self):
-        if self.model is not None and self.processor is not None:
-            return
         try:
-            from transformers import CLIPModel, CLIPProcessor
+            if self.model is None or self.processor is None:
+                from transformers import CLIPModel, CLIPProcessor
 
-            if self.model is None:
-                self.model = CLIPModel.from_pretrained(self.model_name)
-            if self.processor is None:
-                self.processor = CLIPProcessor.from_pretrained(self.model_name)
+                if self.model is None:
+                    self.model = CLIPModel.from_pretrained(self.model_name)
+                if self.processor is None:
+                    self.processor = CLIPProcessor.from_pretrained(self.model_name)
             self.model.to(self.device)
             self.model.eval()
         except Exception as exc:
@@ -145,16 +144,18 @@ class CLIPZeroShotClassifier(BaseModel):
         return self
 
     def prepare_output(self, dataset, is_fit=False):
-        import pyarrow as pa
-        from DashAI.back.dataloaders.classes.dashai_dataset import DashAIDataset
-
         if not self.label_to_idx:
-            return dataset
+            raise RuntimeError("CLIPZeroShotClassifier class labels are not initialized")
+        if len(dataset.column_names) != 1:
+            raise ValueError("CLIPZeroShotClassifier requires exactly one output column")
         column = dataset.column_names[0]
         try:
             encoded = [self.label_to_idx[value] for value in dataset[column]]
         except KeyError as exc:
             raise ValueError(f"Unknown class label: {exc.args[0]!r}") from exc
+        import pyarrow as pa
+        from DashAI.back.dataloaders.classes.dashai_dataset import DashAIDataset
+
         return DashAIDataset(pa.table({column: encoded}))
 
     def predict(self, x):

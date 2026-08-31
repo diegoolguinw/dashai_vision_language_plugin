@@ -1,3 +1,7 @@
+import sys
+import types
+
+import pytest
 import torch
 from conftest import FakeDataset, FakeImage
 
@@ -5,6 +9,51 @@ from dashai_clip_model_package.clip_zero_shot_classifier import (
     CLIPZeroShotClassifier,
     CLIPZeroShotClassifierSchema,
 )
+
+
+class DeviceTrackingTensor:
+    def __init__(self, tensor):
+        self.tensor = tensor
+        self.devices = []
+
+    def to(self, device):
+        self.devices.append(torch.device(device))
+        return self.tensor.to(device)
+
+
+class RecordingProcessor:
+    def __init__(self):
+        self.inputs = None
+        self.tensors = []
+
+    def __call__(self, **inputs):
+        self.inputs = inputs
+        self.tensors = [
+            DeviceTrackingTensor(torch.tensor([[1, 2], [3, 4]])),
+            DeviceTrackingTensor(torch.tensor([[1, 1], [1, 1]])),
+        ]
+        return {
+            "input_ids": self.tensors[0],
+            "attention_mask": self.tensors[1],
+        }
+
+
+class RecordingModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.tensor([1.0]))
+        self.device = None
+        self.text_grad_enabled = None
+        self.text_inputs = None
+
+    def to(self, device):
+        self.device = torch.device(device)
+        return super().to(device)
+
+    def get_text_features(self, **inputs):
+        self.text_grad_enabled = torch.is_grad_enabled()
+        self.text_inputs = inputs
+        return torch.tensor([[3.0, 4.0], [0.0, 0.0]], device=self.weight.device)
 
 
 def test_constructor_is_lazy_and_declares_compatible_task():
@@ -43,26 +92,127 @@ def test_train_fallback_uses_first_seen_order(monkeypatch):
     assert component.class_names == ["bird", "cat", "dog"]
 
 
-def test_train_does_not_modify_model_parameters(monkeypatch):
+def test_train_prepares_text_without_gradients_or_parameter_changes():
     component = CLIPZeroShotClassifier(device="cpu")
-    component.model = torch.nn.Linear(2, 2)
+    component.model = RecordingModel()
+    component.processor = RecordingProcessor()
     before = [parameter.detach().clone() for parameter in component.model.parameters()]
     flags = [parameter.requires_grad for parameter in component.model.parameters()]
-    monkeypatch.setattr(component, "_ensure_backend", lambda: None)
-    monkeypatch.setattr(component, "_prepare_text_features", lambda: None)
-    y = FakeDataset("label", ["cat", "dog"])
 
-    component.train(FakeDataset("image", []), y)
+    component.train(
+        FakeDataset("image", []), FakeDataset("label", ["cat", "dog"])
+    )
 
+    assert component.model.training is False
+    assert component.model.text_grad_enabled is False
+    assert all(tensor.devices == [torch.device("cpu")] for tensor in component.processor.tensors)
+    assert all(value.device.type == "cpu" for value in component.model.text_inputs.values())
+    assert torch.allclose(
+        component._text_features, torch.tensor([[0.6, 0.8], [0.0, 0.0]])
+    )
     after = list(component.model.parameters())
     assert all(torch.equal(old, new) for old, new in zip(before, after))
     assert [parameter.requires_grad for parameter in after] == flags
 
 
+def test_ensure_backend_loads_checkpoint_lazily(monkeypatch):
+    model = RecordingModel()
+    processor = RecordingProcessor()
+
+    class FakeCLIPModel:
+        @staticmethod
+        def from_pretrained(model_name):
+            model.checkpoint = model_name
+            return model
+
+    class FakeCLIPProcessor:
+        @staticmethod
+        def from_pretrained(model_name):
+            processor.checkpoint = model_name
+            return processor
+
+    fake_transformers = types.ModuleType("transformers")
+    fake_transformers.CLIPModel = FakeCLIPModel
+    fake_transformers.CLIPProcessor = FakeCLIPProcessor
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    component = CLIPZeroShotClassifier(model_name="test/checkpoint", device="cpu")
+
+    component._ensure_backend()
+
+    assert component.model is model
+    assert component.processor is processor
+    assert component.model.device == torch.device("cpu")
+    assert component.model.training is False
+    assert component.model.checkpoint == "test/checkpoint"
+    assert component.processor.checkpoint == "test/checkpoint"
+
+
+def test_ensure_backend_includes_checkpoint_in_load_error(monkeypatch):
+    class FailingCLIPModel:
+        @staticmethod
+        def from_pretrained(model_name):
+            raise OSError("not available")
+
+    fake_transformers = types.ModuleType("transformers")
+    fake_transformers.CLIPModel = FailingCLIPModel
+    fake_transformers.CLIPProcessor = object()
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    component = CLIPZeroShotClassifier(model_name="missing/checkpoint", device="cpu")
+
+    with pytest.raises(
+        RuntimeError, match="Unable to load CLIP checkpoint 'missing/checkpoint'"
+    ):
+        component._ensure_backend()
+
+
 def test_prepare_output_encodes_labels_in_canonical_order():
+    from DashAI.back.dataloaders.classes.dashai_dataset import DashAIDataset
+
     component = CLIPZeroShotClassifier(device="cpu")
     component.label_to_idx = {"dog": 0, "cat": 1}
 
     output = component.prepare_output(FakeDataset("label", ["cat", "dog"]))
 
+    assert isinstance(output, DashAIDataset)
     assert output["label"] == [1, 0]
+
+
+def test_prepare_output_rejects_untrained_class_mapping():
+    component = CLIPZeroShotClassifier(device="cpu")
+
+    with pytest.raises(RuntimeError, match="class labels are not initialized"):
+        component.prepare_output(FakeDataset("label", ["cat"]))
+
+
+def test_prepare_output_requires_exactly_one_column():
+    component = CLIPZeroShotClassifier(device="cpu")
+    component.label_to_idx = {"cat": 0}
+    dataset = FakeDataset("label", ["cat"])
+    dataset.column_names = ["label", "other"]
+
+    with pytest.raises(ValueError, match="exactly one output column"):
+        component.prepare_output(dataset)
+
+
+def test_prepare_output_rejects_unknown_class_label():
+    component = CLIPZeroShotClassifier(device="cpu")
+    component.label_to_idx = {"cat": 0}
+
+    with pytest.raises(ValueError, match="Unknown class label: 'dog'"):
+        component.prepare_output(FakeDataset("label", ["dog"]))
+
+
+def test_extract_class_names_rejects_declared_empty_categories():
+    component = CLIPZeroShotClassifier(device="cpu")
+    empty_categories = types.SimpleNamespace(categories=[])
+    y = FakeDataset("label", ["cat"], empty_categories)
+
+    with pytest.raises(ValueError, match="At least one class label is required"):
+        component._extract_class_names(y)
+
+
+def test_extract_class_names_rejects_no_observed_labels():
+    component = CLIPZeroShotClassifier(device="cpu")
+
+    with pytest.raises(ValueError, match="At least one class label is required"):
+        component._extract_class_names(FakeDataset("label", []))
