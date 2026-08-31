@@ -94,3 +94,11 @@ def fake_backend():
         processor=FakeProcessor(),
         text_features=torch.eye(2),
     )
+
+
+@pytest.fixture
+def fake_two_class_dashai_dataset():
+    categorical = SimpleNamespace(categories=["red", "blue"])
+    x = FakeDataset("image", [FakeImage("red"), FakeImage("blue")])
+    y = FakeDataset("label", ["red", "blue"], categorical)
+    return x, y
