@@ -384,3 +384,62 @@ def test_predict_adds_a_batch_size_hint_to_text_feature_cuda_out_of_memory(
         component.predict(FakeDataset("image", [FakeImage("red")]))
 
     assert isinstance(error.value.__cause__, torch.cuda.OutOfMemoryError)
+
+
+def test_save_load_round_trip_is_lazy(tmp_path):
+    component = CLIPZeroShotClassifier(
+        model_name="org/checkpoint",
+        prompt_template="an image of {}",
+        batch_size=7,
+        device="cpu",
+    )
+    component.class_names = ["dog", "cat"]
+    component.label_to_idx = {"dog": 0, "cat": 1}
+    component.idx_to_label = {0: "dog", 1: "cat"}
+    component.model = object()
+    component.processor = object()
+    path = tmp_path / "clip.pt"
+
+    component.save(path)
+    restored = CLIPZeroShotClassifier.load(path)
+
+    assert restored.model_name == "org/checkpoint"
+    assert restored.prompt_template == "an image of {}"
+    assert restored.batch_size == 7
+    assert restored.device_name == "cpu"
+    assert restored.class_names == ["dog", "cat"]
+    assert restored.label_to_idx == {"dog": 0, "cat": 1}
+    assert restored.idx_to_label == {0: "dog", 1: "cat"}
+    assert restored.model is None
+    assert restored.processor is None
+    assert restored._text_features is None
+
+
+def test_load_rejects_malformed_checkpoint(tmp_path):
+    path = tmp_path / "clip.pt"
+    torch.save({"format_version": 1}, path)
+
+    with pytest.raises(
+        ValueError, match="Invalid CLIPZeroShotClassifier checkpoint"
+    ):
+        CLIPZeroShotClassifier.load(path)
+
+
+def test_load_rejects_unsupported_checkpoint_version(tmp_path):
+    path = tmp_path / "clip.pt"
+    torch.save(
+        {
+            "format_version": 2,
+            "model_name": "org/checkpoint",
+            "prompt_template": "an image of {}",
+            "batch_size": 7,
+            "device_name": "cpu",
+            "class_names": ["dog", "cat"],
+        },
+        path,
+    )
+
+    with pytest.raises(
+        ValueError, match="Unsupported CLIPZeroShotClassifier checkpoint version"
+    ):
+        CLIPZeroShotClassifier.load(path)

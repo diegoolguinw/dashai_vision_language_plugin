@@ -224,8 +224,48 @@ class CLIPZeroShotClassifier(BaseModel):
             ) from exc
 
     def save(self, filename):
-        raise NotImplementedError
+        import torch
+
+        torch.save(
+            {
+                "format_version": 1,
+                "model_name": self.model_name,
+                "prompt_template": self.prompt_template,
+                "batch_size": self.batch_size,
+                "device_name": self.device_name,
+                "class_names": self.class_names,
+            },
+            filename,
+        )
 
     @classmethod
     def load(cls, filename):
-        raise NotImplementedError
+        import torch
+
+        state = torch.load(filename, map_location="cpu", weights_only=True)
+        required = {
+            "format_version",
+            "model_name",
+            "prompt_template",
+            "batch_size",
+            "device_name",
+            "class_names",
+        }
+        if not isinstance(state, dict) or required - state.keys():
+            raise ValueError("Invalid CLIPZeroShotClassifier checkpoint")
+        if state["format_version"] != 1:
+            raise ValueError("Unsupported CLIPZeroShotClassifier checkpoint version")
+        instance = cls(
+            model_name=state["model_name"],
+            prompt_template=state["prompt_template"],
+            batch_size=state["batch_size"],
+            device=state["device_name"],
+        )
+        instance.class_names = list(state["class_names"])
+        instance.label_to_idx = {
+            label: index for index, label in enumerate(instance.class_names)
+        }
+        instance.idx_to_label = {
+            index: label for label, index in instance.label_to_idx.items()
+        }
+        return instance
