@@ -5,12 +5,17 @@ import torch
 from PIL import Image
 
 
+class BatchEncoding(dict):
+    pass
+
+
 class FakeImage:
-    def __init__(self, color):
+    def __init__(self, color, mode="RGB"):
         self.color = color
+        self.mode = mode
 
     def to_pil(self):
-        return Image.new("RGB", (2, 2), self.color)
+        return Image.new(self.mode, (2, 2), self.color)
 
 
 class FakeDataset:
@@ -32,19 +37,37 @@ class FakeDataset:
         raise KeyError(key)
 
 
+class DeviceTrackingTensor:
+    def __init__(self, tensor):
+        self.tensor = tensor
+        self.devices = []
+
+    def to(self, device):
+        self.devices.append(torch.device(device))
+        return self.tensor.to(device)
+
+
 class FakeProcessor:
     def __init__(self):
         self.image_batch_sizes = []
+        self.image_encodings = []
+        self.image_tensors = []
+        self.image_batches = []
 
     def __call__(self, *, images=None, text=None, return_tensors="pt", padding=False):
         if images is not None:
             self.image_batch_sizes.append(len(images))
+            self.image_batches.append(images)
             rows = []
             for image in images:
                 red, _green, blue = image.getpixel((0, 0))
                 rows.append([float(red > blue), float(blue > red)])
-            return {"pixel_values": torch.tensor(rows)}
-        return {"input_ids": torch.arange(len(text)).reshape(-1, 1)}
+            pixel_values = DeviceTrackingTensor(torch.tensor(rows))
+            self.image_tensors.append(pixel_values)
+            encoding = BatchEncoding({"pixel_values": pixel_values})
+            self.image_encodings.append(encoding)
+            return encoding
+        return BatchEncoding({"input_ids": torch.arange(len(text)).reshape(-1, 1)})
 
 
 class FakeCLIPModel(torch.nn.Module):

@@ -4,22 +4,12 @@ import types
 import numpy as np
 import pytest
 import torch
-from conftest import FakeDataset, FakeImage
+from conftest import BatchEncoding, DeviceTrackingTensor, FakeDataset, FakeImage
 
 from dashai_clip_model_package.clip_zero_shot_classifier import (
     CLIPZeroShotClassifier,
     CLIPZeroShotClassifierSchema,
 )
-
-
-class DeviceTrackingTensor:
-    def __init__(self, tensor):
-        self.tensor = tensor
-        self.devices = []
-
-    def to(self, device):
-        self.devices.append(torch.device(device))
-        return self.tensor.to(device)
 
 
 class RecordingProcessor:
@@ -247,6 +237,33 @@ def test_predict_returns_ordered_probabilities_in_batches(fake_backend):
     assert component.processor.image_batch_sizes == [2, 1]
 
 
+def test_predict_applies_normalization_scale_and_inference_mode(fake_backend):
+    component = _fitted_component(fake_backend)
+    with torch.no_grad():
+        component.model.logit_scale.fill_(np.log(2.0))
+    observed = {}
+
+    def non_unit_features(pixel_values):
+        observed["grad_enabled"] = torch.is_grad_enabled()
+        observed["device"] = pixel_values.device
+        return torch.tensor([[3.0, 4.0], [0.0, 5.0]], device=pixel_values.device)
+
+    component.model.get_image_features = non_unit_features
+
+    probabilities = component.predict(
+        FakeDataset("image", [FakeImage("red"), FakeImage("blue")])
+    )
+
+    np.testing.assert_allclose(
+        probabilities,
+        np.array([[0.40131235, 0.59868765], [0.11920292, 0.88079708]]),
+        atol=1e-6,
+    )
+    assert observed == {"grad_enabled": False, "device": torch.device("cpu")}
+    assert isinstance(component.processor.image_encodings[0], BatchEncoding)
+    assert component.processor.image_tensors[0].devices == [torch.device("cpu")]
+
+
 def test_predict_requires_training_or_loading_class_setup():
     component = CLIPZeroShotClassifier(device="cpu")
 
@@ -264,11 +281,52 @@ def test_predict_returns_empty_float32_array_for_empty_input(fake_backend):
     assert component.processor.image_batch_sizes == []
 
 
+def test_predict_empty_input_does_not_initialize_the_backend():
+    class UntouchedModel:
+        def __init__(self):
+            self.to_calls = 0
+
+        def to(self, _device):
+            self.to_calls += 1
+            raise AssertionError("empty input must not initialize the model")
+
+    component = CLIPZeroShotClassifier(device="cpu")
+    component.class_names = ["red", "blue"]
+    component.model = UntouchedModel()
+    component.processor = object()
+
+    probabilities = component.predict(FakeDataset("image", []))
+
+    assert probabilities.shape == (0, 2)
+    assert component.model.to_calls == 0
+
+
 def test_predict_identifies_the_undecodable_image_sample(fake_backend):
     component = _fitted_component(fake_backend)
 
     with pytest.raises(ValueError, match="Unable to decode image at sample 1"):
         component.predict(FakeDataset("image", [FakeImage("red"), object()]))
+
+
+def test_predict_converts_images_to_rgb(fake_backend):
+    component = _fitted_component(fake_backend)
+
+    component.predict(FakeDataset("image", [FakeImage(127, mode="L")]))
+
+    assert component.processor.image_batches[0][0].mode == "RGB"
+
+
+def test_predict_chains_the_original_image_decode_error(fake_backend):
+    class BrokenImage:
+        def to_pil(self):
+            raise OSError("corrupt image")
+
+    component = _fitted_component(fake_backend)
+
+    with pytest.raises(ValueError, match="Unable to decode image at sample 0") as error:
+        component.predict(FakeDataset("image", [BrokenImage()]))
+
+    assert isinstance(error.value.__cause__, OSError)
 
 
 def test_predict_requires_exactly_one_input_column(fake_backend):
@@ -290,6 +348,37 @@ def test_predict_adds_a_batch_size_hint_to_cuda_out_of_memory(fake_backend):
         raise torch.cuda.OutOfMemoryError("simulated CUDA OOM")
 
     component.model.get_image_features = raise_out_of_memory
+
+    with pytest.raises(RuntimeError, match="batch_size") as error:
+        component.predict(FakeDataset("image", [FakeImage("red")]))
+
+    assert isinstance(error.value.__cause__, torch.cuda.OutOfMemoryError)
+
+
+def test_predict_adds_a_batch_size_hint_to_backend_cuda_out_of_memory(fake_backend):
+    component = _fitted_component(fake_backend)
+
+    def raise_out_of_memory(_device):
+        raise torch.cuda.OutOfMemoryError("simulated backend CUDA OOM")
+
+    component.model.to = raise_out_of_memory
+
+    with pytest.raises(RuntimeError, match="batch_size") as error:
+        component.predict(FakeDataset("image", [FakeImage("red")]))
+
+    assert isinstance(error.value.__cause__, torch.cuda.OutOfMemoryError)
+
+
+def test_predict_adds_a_batch_size_hint_to_text_feature_cuda_out_of_memory(
+    fake_backend,
+):
+    component = _fitted_component(fake_backend)
+    component._text_features = None
+
+    def raise_out_of_memory(**_inputs):
+        raise torch.cuda.OutOfMemoryError("simulated text CUDA OOM")
+
+    component.model.get_text_features = raise_out_of_memory
 
     with pytest.raises(RuntimeError, match="batch_size") as error:
         component.predict(FakeDataset("image", [FakeImage("red")]))

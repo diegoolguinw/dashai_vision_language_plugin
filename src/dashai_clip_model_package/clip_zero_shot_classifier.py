@@ -103,6 +103,8 @@ class CLIPZeroShotClassifier(BaseModel):
         return names
 
     def _ensure_backend(self):
+        import torch
+
         try:
             if self.model is None or self.processor is None:
                 from transformers import CLIPModel, CLIPProcessor
@@ -113,6 +115,8 @@ class CLIPZeroShotClassifier(BaseModel):
                     self.processor = CLIPProcessor.from_pretrained(self.model_name)
             self.model.to(self.device)
             self.model.eval()
+        except torch.cuda.OutOfMemoryError:
+            raise
         except Exception as exc:
             raise RuntimeError(
                 f"Unable to load CLIP checkpoint '{self.model_name}'"
@@ -176,22 +180,24 @@ class CLIPZeroShotClassifier(BaseModel):
         if len(x.column_names) != 1:
             raise ValueError("CLIPZeroShotClassifier requires exactly one input column")
 
-        self._ensure_backend()
-        if self._text_features is None:
-            self._prepare_text_features()
-
         if len(x) == 0:
             return np.empty((0, len(self.class_names)), dtype=np.float32)
 
-        column = x.column_names[0]
-        values = x[column]
-        batches = []
-        for start in range(0, len(x), self.batch_size):
-            images = [
-                self._to_pil_image(value, index)
-                for index, value in enumerate(values[start : start + self.batch_size], start)
-            ]
-            try:
+        try:
+            self._ensure_backend()
+            if self._text_features is None:
+                self._prepare_text_features()
+
+            column = x.column_names[0]
+            values = x[column]
+            batches = []
+            for start in range(0, len(x), self.batch_size):
+                images = [
+                    self._to_pil_image(value, index)
+                    for index, value in enumerate(
+                        values[start : start + self.batch_size], start
+                    )
+                ]
                 image_inputs = self.processor(images=images, return_tensors="pt")
                 image_inputs = {
                     name: value.to(self.device) for name, value in image_inputs.items()
@@ -210,12 +216,12 @@ class CLIPZeroShotClassifier(BaseModel):
                     batches.append(
                         torch.softmax(logits, dim=-1).cpu().numpy().astype(np.float32)
                     )
-            except torch.cuda.OutOfMemoryError as exc:
-                raise RuntimeError(
-                    "CUDA out of memory during CLIP inference; "
-                    f"try reducing batch_size (currently {self.batch_size})"
-                ) from exc
-        return np.concatenate(batches, axis=0)
+            return np.concatenate(batches, axis=0)
+        except torch.cuda.OutOfMemoryError as exc:
+            raise RuntimeError(
+                "CUDA out of memory during CLIP inference; "
+                f"try reducing batch_size (currently {self.batch_size})"
+            ) from exc
 
     def save(self, filename):
         raise NotImplementedError
