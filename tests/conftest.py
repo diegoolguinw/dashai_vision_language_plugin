@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+import torch
 from PIL import Image
 
 
@@ -31,6 +32,42 @@ class FakeDataset:
         raise KeyError(key)
 
 
+class FakeProcessor:
+    def __init__(self):
+        self.image_batch_sizes = []
+
+    def __call__(self, *, images=None, text=None, return_tensors="pt", padding=False):
+        if images is not None:
+            self.image_batch_sizes.append(len(images))
+            rows = []
+            for image in images:
+                red, _green, blue = image.getpixel((0, 0))
+                rows.append([float(red > blue), float(blue > red)])
+            return {"pixel_values": torch.tensor(rows)}
+        return {"input_ids": torch.arange(len(text)).reshape(-1, 1)}
+
+
+class FakeCLIPModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.logit_scale = torch.nn.Parameter(torch.tensor(0.0))
+
+    def get_image_features(self, pixel_values):
+        return pixel_values
+
+    def get_text_features(self, input_ids):
+        return torch.eye(len(input_ids), 2)
+
+
 @pytest.fixture
 def categorical_type():
     return SimpleNamespace(categories=["dog", "cat"])
+
+
+@pytest.fixture
+def fake_backend():
+    return SimpleNamespace(
+        model=FakeCLIPModel(),
+        processor=FakeProcessor(),
+        text_features=torch.eye(2),
+    )

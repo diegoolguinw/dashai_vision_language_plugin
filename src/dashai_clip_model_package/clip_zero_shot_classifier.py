@@ -1,5 +1,6 @@
 from typing import ClassVar
 
+import numpy as np
 from DashAI.back.core.schema_fields import (
     enum_field,
     int_field,
@@ -158,8 +159,63 @@ class CLIPZeroShotClassifier(BaseModel):
 
         return DashAIDataset(pa.table({column: encoded}))
 
+    def _to_pil_image(self, value, index):
+        try:
+            return value.to_pil().convert("RGB")
+        except Exception as exc:
+            raise ValueError(f"Unable to decode image at sample {index}") from exc
+
     def predict(self, x):
-        raise NotImplementedError
+        import torch
+
+        if not self.class_names:
+            raise RuntimeError(
+                "CLIPZeroShotClassifier must be trained or loaded before prediction; "
+                "call train or load first"
+            )
+        if len(x.column_names) != 1:
+            raise ValueError("CLIPZeroShotClassifier requires exactly one input column")
+
+        self._ensure_backend()
+        if self._text_features is None:
+            self._prepare_text_features()
+
+        if len(x) == 0:
+            return np.empty((0, len(self.class_names)), dtype=np.float32)
+
+        column = x.column_names[0]
+        values = x[column]
+        batches = []
+        for start in range(0, len(x), self.batch_size):
+            images = [
+                self._to_pil_image(value, index)
+                for index, value in enumerate(values[start : start + self.batch_size], start)
+            ]
+            try:
+                image_inputs = self.processor(images=images, return_tensors="pt")
+                image_inputs = {
+                    name: value.to(self.device) for name, value in image_inputs.items()
+                }
+                with torch.inference_mode():
+                    image_features = self.model.get_image_features(**image_inputs)
+                    denominator = image_features.norm(
+                        dim=-1, keepdim=True
+                    ).clamp_min(torch.finfo(image_features.dtype).eps)
+                    image_features = image_features / denominator
+                    logits = (
+                        self.model.logit_scale.exp()
+                        * image_features
+                        @ self._text_features.T
+                    )
+                    batches.append(
+                        torch.softmax(logits, dim=-1).cpu().numpy().astype(np.float32)
+                    )
+            except torch.cuda.OutOfMemoryError as exc:
+                raise RuntimeError(
+                    "CUDA out of memory during CLIP inference; "
+                    f"try reducing batch_size (currently {self.batch_size})"
+                ) from exc
+        return np.concatenate(batches, axis=0)
 
     def save(self, filename):
         raise NotImplementedError

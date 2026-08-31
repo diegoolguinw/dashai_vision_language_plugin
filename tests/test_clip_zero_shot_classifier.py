@@ -1,6 +1,7 @@
 import sys
 import types
 
+import numpy as np
 import pytest
 import torch
 from conftest import FakeDataset, FakeImage
@@ -216,3 +217,81 @@ def test_extract_class_names_rejects_no_observed_labels():
 
     with pytest.raises(ValueError, match="At least one class label is required"):
         component._extract_class_names(FakeDataset("label", []))
+
+
+def _fitted_component(fake_backend, batch_size=2):
+    component = CLIPZeroShotClassifier(batch_size=batch_size, device="cpu")
+    component.model = fake_backend.model
+    component.processor = fake_backend.processor
+    component.class_names = ["red", "blue"]
+    component.label_to_idx = {"red": 0, "blue": 1}
+    component.idx_to_label = {0: "red", 1: "blue"}
+    component._text_features = fake_backend.text_features
+    return component
+
+
+def test_predict_returns_ordered_probabilities_in_batches(fake_backend):
+    component = _fitted_component(fake_backend)
+    dataset = FakeDataset(
+        "image",
+        [FakeImage("red"), FakeImage("blue"), FakeImage("red")],
+    )
+
+    probabilities = component.predict(dataset)
+
+    assert probabilities.shape == (3, 2)
+    assert probabilities.dtype == np.float32
+    np.testing.assert_allclose(probabilities.sum(axis=1), 1.0, atol=1e-6)
+    assert np.all(probabilities >= 0)
+    assert probabilities.argmax(axis=1).tolist() == [0, 1, 0]
+    assert component.processor.image_batch_sizes == [2, 1]
+
+
+def test_predict_requires_training_or_loading_class_setup():
+    component = CLIPZeroShotClassifier(device="cpu")
+
+    with pytest.raises(RuntimeError, match="train or load"):
+        component.predict(FakeDataset("image", [FakeImage("red")]))
+
+
+def test_predict_returns_empty_float32_array_for_empty_input(fake_backend):
+    component = _fitted_component(fake_backend)
+
+    probabilities = component.predict(FakeDataset("image", []))
+
+    assert probabilities.shape == (0, 2)
+    assert probabilities.dtype == np.float32
+    assert component.processor.image_batch_sizes == []
+
+
+def test_predict_identifies_the_undecodable_image_sample(fake_backend):
+    component = _fitted_component(fake_backend)
+
+    with pytest.raises(ValueError, match="Unable to decode image at sample 1"):
+        component.predict(FakeDataset("image", [FakeImage("red"), object()]))
+
+
+def test_predict_requires_exactly_one_input_column(fake_backend):
+    component = _fitted_component(fake_backend)
+    dataset = FakeDataset("image", [FakeImage("red")])
+    dataset.column_names = ["image", "other"]
+
+    with pytest.raises(
+        ValueError,
+        match="CLIPZeroShotClassifier requires exactly one input column",
+    ):
+        component.predict(dataset)
+
+
+def test_predict_adds_a_batch_size_hint_to_cuda_out_of_memory(fake_backend):
+    component = _fitted_component(fake_backend)
+
+    def raise_out_of_memory(**_inputs):
+        raise torch.cuda.OutOfMemoryError("simulated CUDA OOM")
+
+    component.model.get_image_features = raise_out_of_memory
+
+    with pytest.raises(RuntimeError, match="batch_size") as error:
+        component.predict(FakeDataset("image", [FakeImage("red")]))
+
+    assert isinstance(error.value.__cause__, torch.cuda.OutOfMemoryError)
