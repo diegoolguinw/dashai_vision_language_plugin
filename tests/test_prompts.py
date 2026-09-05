@@ -1,6 +1,6 @@
 import pytest
 
-from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
+from dashai_vision_language_plugin.prompts import build_prompts, validate_prompt_template
 
 
 def test_build_prompts_normalizes_underscores():

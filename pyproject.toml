@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "dashai-clip-model-package"
+name = "dashai-vision-language-plugin"
 version = "0.1.0"
-description = "CLIP zero-shot image classification for dashAI"
+description = "Vision-language zero-shot image classification for dashAI"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -20,19 +20,19 @@ dependencies = [
 ]
 
 [project.entry-points.'dashai.plugins']
-CLIPViTB32ZeroShotClassifier = "dashai_clip_model_package.clip_vit_b32_zero_shot_classifier:CLIPViTB32ZeroShotClassifier"
-CLIPViTB16ZeroShotClassifier = "dashai_clip_model_package.clip_vit_b16_zero_shot_classifier:CLIPViTB16ZeroShotClassifier"
-CLIPViTL14ZeroShotClassifier = "dashai_clip_model_package.clip_vit_l14_zero_shot_classifier:CLIPViTL14ZeroShotClassifier"
-SigLIPZeroShotClassifier = "dashai_clip_model_package.siglip_zero_shot_classifier:SigLIPZeroShotClassifier"
-ALIGNZeroShotClassifier = "dashai_clip_model_package.align_zero_shot_classifier:ALIGNZeroShotClassifier"
-AltCLIPZeroShotClassifier = "dashai_clip_model_package.altclip_zero_shot_classifier:AltCLIPZeroShotClassifier"
-MetaCLIP2ZeroShotClassifier = "dashai_clip_model_package.metaclip2_zero_shot_classifier:MetaCLIP2ZeroShotClassifier"
+CLIPViTB32ZeroShotClassifier = "dashai_vision_language_plugin.clip_vit_b32_zero_shot_classifier:CLIPViTB32ZeroShotClassifier"
+CLIPViTB16ZeroShotClassifier = "dashai_vision_language_plugin.clip_vit_b16_zero_shot_classifier:CLIPViTB16ZeroShotClassifier"
+CLIPViTL14ZeroShotClassifier = "dashai_vision_language_plugin.clip_vit_l14_zero_shot_classifier:CLIPViTL14ZeroShotClassifier"
+SigLIPZeroShotClassifier = "dashai_vision_language_plugin.siglip_zero_shot_classifier:SigLIPZeroShotClassifier"
+ALIGNZeroShotClassifier = "dashai_vision_language_plugin.align_zero_shot_classifier:ALIGNZeroShotClassifier"
+AltCLIPZeroShotClassifier = "dashai_vision_language_plugin.altclip_zero_shot_classifier:AltCLIPZeroShotClassifier"
+MetaCLIP2ZeroShotClassifier = "dashai_vision_language_plugin.metaclip2_zero_shot_classifier:MetaCLIP2ZeroShotClassifier"
 
 [project.optional-dependencies]
 dev = ["build", "pytest", "ruff"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dashai_clip_model_package"]
+packages = ["src/dashai_vision_language_plugin"]
 
 [tool.pytest.ini_options]
 addopts = "-m 'not integration'"

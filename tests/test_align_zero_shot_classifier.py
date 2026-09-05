@@ -6,7 +6,7 @@ import pytest
 import torch
 from conftest import BatchEncoding, DeviceTrackingTensor, FakeDataset, FakeImage
 
-from dashai_clip_model_package.align_zero_shot_classifier import (
+from dashai_vision_language_plugin.align_zero_shot_classifier import (
     ALIGNZeroShotClassifier,
     ALIGNZeroShotClassifierSchema,
 )

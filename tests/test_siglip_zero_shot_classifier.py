@@ -6,7 +6,7 @@ import pytest
 import torch
 from conftest import BatchEncoding, DeviceTrackingTensor, FakeDataset, FakeImage
 
-from dashai_clip_model_package.siglip_zero_shot_classifier import (
+from dashai_vision_language_plugin.siglip_zero_shot_classifier import (
     SigLIPZeroShotClassifier,
     SigLIPZeroShotClassifierSchema,
 )

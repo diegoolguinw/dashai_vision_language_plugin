@@ -14,10 +14,10 @@ COMPONENT_NAMES = [
 
 
 def test_public_component_is_exported():
-    import dashai_clip_model_package
+    import dashai_vision_language_plugin
 
     for name in COMPONENT_NAMES:
-        component = getattr(dashai_clip_model_package, name)
+        component = getattr(dashai_vision_language_plugin, name)
         assert component.__name__ == name
 
 

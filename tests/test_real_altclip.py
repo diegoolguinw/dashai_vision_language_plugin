@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from dashai_clip_model_package import AltCLIPZeroShotClassifier
+from dashai_vision_language_plugin import AltCLIPZeroShotClassifier
 
 
 @pytest.mark.integration

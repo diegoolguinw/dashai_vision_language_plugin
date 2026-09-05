@@ -1,13 +1,13 @@
-# dashAI CLIP Model Package
+# dashAI Vision-Language plugin
 
-Zero-shot image-classification plugins for [dashAI](https://github.com/DashboardAI/dashAI). Ships seven components backed by different Hugging Face vision-language checkpoints: **CLIP** (three sizes), **SigLIP**, **ALIGN**, **AltCLIP**, and **MetaCLIP 2**, all Zero-Shot.
+Zero-shot image-classification plugins for [dashAI](https://github.com/DashAISoftware/dashAI). Ships seven components backed by different Hugging Face vision-language checkpoints: **CLIP** (three sizes), **SigLIP**, **ALIGN**, **AltCLIP**, and **MetaCLIP 2**, all Zero-Shot.
 
 ## Installation
 
-For a published release:
+This package is not yet published on PyPI. Install it from source:
 
 ```bash
-pip install dashai-clip-model-package
+pip install .
 ```
 
 For local development:
@@ -32,13 +32,13 @@ The labels in the training dataset define the zero-shot classes. For labels `cat
 
 ## Components
 
-### CLIP Zero-Shot — three sizes (`CLIPViTB32ZeroShotClassifier`, `CLIPViTB16ZeroShotClassifier`, `CLIPViTL14ZeroShotClassifier`)
+### CLIP Zero-Shot
 
-Unlike the other components below, the CLIP checkpoint is **not** a free-text parameter. Following dashAI's own convention for same-family, different-size models (e.g. `ResNet18ImageClassifier`/`ResNet50ImageClassifier`), each CLIP size is its own component with the Hugging Face checkpoint fixed in code, so non-expert users pick a named option instead of typing a model ID:
+Unlike the other components below, the CLIP checkpoint is **not** a free-text parameter. Following dashAI's own convention for same-family, different-size models (e.g. `ResNet18ImageClassifier`/`ResNet50ImageClassifier`), each CLIP size is its own component with the Hugging Face checkpoint fixed in code, so users can pick a named option instead of typing a model ID:
 
 | Component | Fixed checkpoint | Trade-off |
 | --- | --- | --- |
-| `CLIPViTB32ZeroShotClassifier` | `openai/clip-vit-base-patch32` | Fastest, smallest — the default choice. |
+| `CLIPViTB32ZeroShotClassifier` | `openai/clip-vit-base-patch32` | Fastest, smallest; the default choice. |
 | `CLIPViTB16ZeroShotClassifier` | `openai/clip-vit-base-patch16` | Mid-sized: more accurate than B/32, lighter than L/14. |
 | `CLIPViTL14ZeroShotClassifier` | `openai/clip-vit-large-patch14` | Largest, most accurate, slowest, heaviest download. |
 
@@ -50,7 +50,7 @@ All three share the same other parameters:
 | `batch_size` | `32` | Number of images processed per inference batch; must be at least 1. |
 | `device` | `auto` | `auto` uses CUDA when available, otherwise CPU; `cpu` forces CPU; `cuda` requires CUDA to be available. |
 
-They score each image-label pair with CLIP's joint softmax over labels (`softmax(logit_scale.exp() * cosine_similarity)`), so the reported probabilities are a standard categorical distribution. Need a different CLIP checkpoint than these three (e.g. a fine-tuned or community variant)? Subclass `CLIPZeroShotClassifierBase` and set `MODEL_NAME` — that's exactly what these three components do.
+They score each image-label pair with CLIP's joint softmax over labels (`softmax(logit_scale.exp() * cosine_similarity)`), so the reported probabilities are a standard categorical distribution. Need a different CLIP checkpoint than these three (e.g. a fine-tuned or community variant)? Subclass `CLIPZeroShotClassifierBase` and set `MODEL_NAME`; that's exactly what these three components do.
 
 ### SigLIP Zero-Shot (`SigLIPZeroShotClassifier`)
 
@@ -61,9 +61,9 @@ They score each image-label pair with CLIP's joint softmax over labels (`softmax
 | `batch_size` | `32` | Number of images processed together during inference; must be at least 1. |
 | `device` | `auto` | `auto` uses CUDA when available, otherwise CPU; `cpu` forces CPU; `cuda` requires CUDA to be available. |
 
-SigLIP was trained with an independent sigmoid loss per image-label pair (`sigmoid(logit_scale.exp() * cosine_similarity + logit_bias)`), not a joint softmax, so out of the box its per-label scores don't sum to 1 across labels. To stay compatible with dashAI's classification metrics — which expect a per-sample categorical distribution — this component renormalizes the sigmoid scores to sum to 1. This changes only the reported non-argmax probabilities, not the predicted class.
+SigLIP was trained with an independent sigmoid loss per image-label pair (`sigmoid(logit_scale.exp() * cosine_similarity + logit_bias)`), not a joint softmax, so out of the box its per-label scores don't sum to 1 across labels. To stay compatible with dashAI's classification metrics (which expect a per-sample categorical distribution), this component renormalizes the sigmoid scores to sum to 1. This changes only the reported non-argmax probabilities, not the predicted class.
 
-**SigLIP2:** the fixed-resolution SigLIP2 checkpoints (e.g. `google/siglip2-base-patch16-224`) declare `model_type: "siglip"` in their config and load correctly through this same `SigLIPZeroShotClassifier` component — just set `model_name` to a SigLIP2 checkpoint ID, no separate component needed. Only the variable-resolution "NaFlex" SigLIP2 checkpoints require the newer `Siglip2Model`/`Siglip2Processor` classes with different image-handling (`pixel_attention_mask`, `spatial_shapes`), which this plugin does not implement.
+**SigLIP2:** the fixed-resolution SigLIP2 checkpoints (e.g. `google/siglip2-base-patch16-224`) declare `model_type: "siglip"` in their config and load correctly through this same `SigLIPZeroShotClassifier` component; just set `model_name` to a SigLIP2 checkpoint ID, no separate component needed. Only the variable resolution "NaFlex" SigLIP2 checkpoints require the newer `Siglip2Model`/`Siglip2Processor` classes with different image handling (`pixel_attention_mask`, `spatial_shapes`), which this plugin does not implement.
 
 ### ALIGN Zero-Shot (`ALIGNZeroShotClassifier`)
 
@@ -85,7 +85,7 @@ ALIGN pairs an EfficientNet vision encoder with a BERT text encoder. Unlike CLIP
 | `batch_size` | `32` | Number of images processed together during inference; must be at least 1. |
 | `device` | `auto` | `auto` uses CUDA when available, otherwise CPU; `cpu` forces CPU; `cuda` requires CUDA to be available. |
 
-AltCLIP swaps CLIP's text tower for a multilingual XLM-R encoder while keeping CLIP's exact joint-softmax scoring, making it a good fit for class labels or prompts written in languages other than English. It is a larger checkpoint than the others (CLIP ViT-L/14 + XLM-R-large).
+AltCLIP swaps CLIP's text encoder for a multilingual XLM-R encoder while keeping CLIP's exact joint softmax scoring, making it a good fit for class labels or prompts written in languages other than English. It is a larger checkpoint than the others (CLIP ViT-L/14 + XLM-R-large).
 
 ### MetaCLIP 2 Zero-Shot (`MetaCLIP2ZeroShotClassifier`)
 
@@ -96,7 +96,7 @@ AltCLIP swaps CLIP's text tower for a multilingual XLM-R encoder while keeping C
 | `batch_size` | `32` | Number of images processed together during inference; must be at least 1. |
 | `device` | `auto` | `auto` uses CUDA when available, otherwise CPU; `cpu` forces CPU; `cuda` requires CUDA to be available. |
 
-MetaCLIP 2 uses the same joint-softmax scoring and processor as CLIP, but is trained on 300+ languages — a multilingual alternative to AltCLIP. The default checkpoint is the smallest published MetaCLIP 2 variant (ViT-S/16); larger `facebook/metaclip-2-worldwide-*` checkpoints are available for higher accuracy at a larger download/RAM cost.
+MetaCLIP 2 uses the same joint softmax scoring and processor as CLIP, but is trained on 300+ languages, so it is a multilingual alternative to AltCLIP. The default checkpoint is the smallest published MetaCLIP 2 variant (ViT-S/16); larger `facebook/metaclip-2-worldwide-*` checkpoints are available for higher accuracy at a larger download/RAM cost.
 
 ## System Requirements
 
@@ -104,9 +104,9 @@ Measured against `CLIPViTB32ZeroShotClassifier`'s checkpoint (`openai/clip-vit-b
 
 | Resource | Requirement |
 | --- | --- |
-| Disk | ~2GB total for one default checkpoint: ~700MB for `torch` + `transformers`, plus ~1.1GB cached. Each additional cached checkpoint adds its own size; AltCLIP alone can add several GB. |
+| Disk | ~2GB total for one default checkpoint: ~700MB for `torch` + `transformers` (already included in dashAI), plus ~1.1GB cached. Each additional cached checkpoint adds its own size; AltCLIP alone can add several GB. |
 | RAM / CPU | Runs comfortably on CPU with 4-8GB RAM for the small default checkpoints (~150-200M parameters); AltCLIP needs more. |
-| GPU | Optional. `device="cuda"`/`"auto"` use CUDA when available. **Apple Silicon (MPS) is not supported** — this matches dashAI's own models, which also only distinguish CUDA vs. CPU, so on Apple Silicon the plugin always runs on CPU. |
+| GPU | Optional. `device="cuda"`/`"auto"` use CUDA when available (including ROCm builds of PyTorch, which expose the same CUDA API). **Apple Silicon (MPS) is not supported**; this matches dashAI's own models, which only distinguish CUDA vs. CPU. |
 | Network | Required on first use to download the checkpoint from the Hugging Face Hub, unless it is already cached locally. |
 | Software | Python >=3.10, dashAI >=0.9.7.post2 (see `pyproject.toml`). |
 

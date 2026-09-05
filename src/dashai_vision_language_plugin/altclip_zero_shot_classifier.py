@@ -11,19 +11,19 @@ from DashAI.back.core.schema_fields.base_schema import BaseSchema
 from DashAI.back.core.utils import MultilingualString
 from DashAI.back.models.base_model import BaseModel
 
-from dashai_clip_model_package.device import resolve_device
-from dashai_clip_model_package.hf_compat import extract_pooled_embedding
-from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
+from dashai_vision_language_plugin.device import resolve_device
+from dashai_vision_language_plugin.hf_compat import extract_pooled_embedding
+from dashai_vision_language_plugin.prompts import build_prompts, validate_prompt_template
 
 
-class MetaCLIP2ZeroShotClassifierSchema(BaseSchema):
+class AltCLIPZeroShotClassifierSchema(BaseSchema):
     model_name: schema_field(
         string_field(),
-        "facebook/metaclip-2-worldwide-s16",
+        "BAAI/AltCLIP",
         alias=MultilingualString(en="Model name", es="Nombre del modelo"),
         description=MultilingualString(
-            en="Hugging Face model ID for the MetaCLIP 2 checkpoint to use.",
-            es="ID del modelo Hugging Face para el checkpoint MetaCLIP 2 a usar.",
+            en="Hugging Face model ID for the AltCLIP checkpoint to use.",
+            es="ID del modelo Hugging Face para el checkpoint AltCLIP a usar.",
         ),
     )  # type: ignore
     prompt_template: schema_field(
@@ -55,30 +55,30 @@ class MetaCLIP2ZeroShotClassifierSchema(BaseSchema):
     )  # type: ignore
 
 
-class MetaCLIP2ZeroShotClassifier(BaseModel):
-    """Zero-shot image classifier backed by a Hugging Face MetaCLIP 2 checkpoint.
+class AltCLIPZeroShotClassifier(BaseModel):
+    """Zero-shot image classifier backed by a Hugging Face AltCLIP checkpoint.
 
-    MetaCLIP 2 uses the same joint-softmax scoring as CLIP
-    (``softmax(logit_scale.exp() * cos_sim)``) and the standard CLIP
-    processor, but is trained on 300+ languages, making it a multilingual
-    alternative to AltCLIP for class labels or prompts outside English.
+    AltCLIP swaps CLIP's text tower for a multilingual XLM-R encoder while
+    keeping the same joint-softmax scoring
+    (``softmax(logit_scale.exp() * cos_sim)``), so it is a good fit for class
+    labels or prompts written in languages other than English.
     """
 
-    SCHEMA = MetaCLIP2ZeroShotClassifierSchema
+    SCHEMA = AltCLIPZeroShotClassifierSchema
     COMPATIBLE_COMPONENTS: ClassVar[list[str]] = ["ImageClassificationTask"]
-    DISPLAY_NAME = MultilingualString(
-        en="MetaCLIP 2 Zero-Shot", es="MetaCLIP 2 Zero-Shot"
-    )
+    DISPLAY_NAME = MultilingualString(en="AltCLIP Zero-Shot", es="AltCLIP Zero-Shot")
     DESCRIPTION = MultilingualString(
-        en="Classify images by comparing them with text prompts, without fine-tuning.",
-        es="Clasifica imágenes comparándolas con prompts de texto, sin ajuste fino.",
+        en="Classify images by comparing them with multilingual text prompts, "
+        "without fine-tuning.",
+        es="Clasifica imágenes comparándolas con prompts de texto multilingües, "
+        "sin ajuste fino.",
     )
-    COLOR = "#3E5C76"
+    COLOR = "#B24C63"
     ICON = "ImageSearch"
 
     def __init__(
         self,
-        model_name="facebook/metaclip-2-worldwide-s16",
+        model_name="BAAI/AltCLIP",
         prompt_template="a photo of a {}",
         batch_size=32,
         device="auto",
@@ -102,7 +102,7 @@ class MetaCLIP2ZeroShotClassifier(BaseModel):
     def _extract_class_names(self, y_train):
         if len(y_train.column_names) != 1:
             raise ValueError(
-                "MetaCLIP2ZeroShotClassifier requires exactly one output column"
+                "AltCLIPZeroShotClassifier requires exactly one output column"
             )
         column = y_train.column_names[0]
         output_type = (getattr(y_train, "types", {}) or {}).get(column)
@@ -120,19 +120,19 @@ class MetaCLIP2ZeroShotClassifier(BaseModel):
 
         try:
             if self.model is None or self.processor is None:
-                from transformers import CLIPProcessor, MetaClip2Model
+                from transformers import AltCLIPModel, AltCLIPProcessor
 
                 if self.model is None:
-                    self.model = MetaClip2Model.from_pretrained(self.model_name)
+                    self.model = AltCLIPModel.from_pretrained(self.model_name)
                 if self.processor is None:
-                    self.processor = CLIPProcessor.from_pretrained(self.model_name)
+                    self.processor = AltCLIPProcessor.from_pretrained(self.model_name)
             self.model.to(self.device)
             self.model.eval()
         except torch.cuda.OutOfMemoryError:
             raise
         except Exception as exc:
             raise RuntimeError(
-                f"Unable to load MetaCLIP 2 checkpoint '{self.model_name}'"
+                f"Unable to load AltCLIP checkpoint '{self.model_name}'"
             ) from exc
 
     def _prepare_text_features(self):
@@ -164,11 +164,11 @@ class MetaCLIP2ZeroShotClassifier(BaseModel):
     def prepare_output(self, dataset, is_fit=False):
         if not self.label_to_idx:
             raise RuntimeError(
-                "MetaCLIP2ZeroShotClassifier class labels are not initialized"
+                "AltCLIPZeroShotClassifier class labels are not initialized"
             )
         if len(dataset.column_names) != 1:
             raise ValueError(
-                "MetaCLIP2ZeroShotClassifier requires exactly one output column"
+                "AltCLIPZeroShotClassifier requires exactly one output column"
             )
         column = dataset.column_names[0]
         try:
@@ -191,12 +191,12 @@ class MetaCLIP2ZeroShotClassifier(BaseModel):
 
         if not self.class_names:
             raise RuntimeError(
-                "MetaCLIP2ZeroShotClassifier must be trained or loaded before "
+                "AltCLIPZeroShotClassifier must be trained or loaded before "
                 "prediction; call train or load first"
             )
         if len(x.column_names) != 1:
             raise ValueError(
-                "MetaCLIP2ZeroShotClassifier requires exactly one input column"
+                "AltCLIPZeroShotClassifier requires exactly one input column"
             )
 
         if len(x) == 0:
@@ -240,7 +240,7 @@ class MetaCLIP2ZeroShotClassifier(BaseModel):
             return np.concatenate(batches, axis=0)
         except torch.cuda.OutOfMemoryError as exc:
             raise RuntimeError(
-                "CUDA out of memory during MetaCLIP 2 inference; "
+                "CUDA out of memory during AltCLIP inference; "
                 f"try reducing batch_size (currently {self.batch_size})"
             ) from exc
 
@@ -273,11 +273,9 @@ class MetaCLIP2ZeroShotClassifier(BaseModel):
             "class_names",
         }
         if not isinstance(state, dict) or required - state.keys():
-            raise ValueError("Invalid MetaCLIP2ZeroShotClassifier checkpoint")
+            raise ValueError("Invalid AltCLIPZeroShotClassifier checkpoint")
         if state["format_version"] != 1:
-            raise ValueError(
-                "Unsupported MetaCLIP2ZeroShotClassifier checkpoint version"
-            )
+            raise ValueError("Unsupported AltCLIPZeroShotClassifier checkpoint version")
         instance = cls(
             model_name=state["model_name"],
             prompt_template=state["prompt_template"],

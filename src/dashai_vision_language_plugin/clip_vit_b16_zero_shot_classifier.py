@@ -1,6 +1,6 @@
 from DashAI.back.core.utils import MultilingualString
 
-from dashai_clip_model_package.clip_zero_shot_classifier_base import (
+from dashai_vision_language_plugin.clip_zero_shot_classifier_base import (
     CLIPZeroShotClassifierBase,
     CLIPZeroShotClassifierSchema,
 )
