@@ -20,7 +20,13 @@ dependencies = [
 ]
 
 [project.entry-points.'dashai.plugins']
-CLIPZeroShotClassifier = "dashai_clip_model_package.clip_zero_shot_classifier:CLIPZeroShotClassifier"
+CLIPViTB32ZeroShotClassifier = "dashai_clip_model_package.clip_vit_b32_zero_shot_classifier:CLIPViTB32ZeroShotClassifier"
+CLIPViTB16ZeroShotClassifier = "dashai_clip_model_package.clip_vit_b16_zero_shot_classifier:CLIPViTB16ZeroShotClassifier"
+CLIPViTL14ZeroShotClassifier = "dashai_clip_model_package.clip_vit_l14_zero_shot_classifier:CLIPViTL14ZeroShotClassifier"
+SigLIPZeroShotClassifier = "dashai_clip_model_package.siglip_zero_shot_classifier:SigLIPZeroShotClassifier"
+ALIGNZeroShotClassifier = "dashai_clip_model_package.align_zero_shot_classifier:ALIGNZeroShotClassifier"
+AltCLIPZeroShotClassifier = "dashai_clip_model_package.altclip_zero_shot_classifier:AltCLIPZeroShotClassifier"
+MetaCLIP2ZeroShotClassifier = "dashai_clip_model_package.metaclip2_zero_shot_classifier:MetaCLIP2ZeroShotClassifier"
 
 [project.optional-dependencies]
 dev = ["build", "pytest", "ruff"]

@@ -12,27 +12,18 @@ from DashAI.back.core.utils import MultilingualString
 from DashAI.back.models.base_model import BaseModel
 
 from dashai_clip_model_package.device import resolve_device
+from dashai_clip_model_package.hf_compat import extract_pooled_embedding
 from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
 
 
-def _extract_embedding(output):
-    """Unwrap the projected embedding tensor from a CLIP feature call.
-
-    Transformers >=5 returns a ``BaseModelOutputWithPooling`` whose
-    ``pooler_output`` holds the projected embedding; older releases (and the
-    test fakes) return the tensor directly.
-    """
-    return output.pooler_output if hasattr(output, "pooler_output") else output
-
-
-class CLIPZeroShotClassifierSchema(BaseSchema):
+class AltCLIPZeroShotClassifierSchema(BaseSchema):
     model_name: schema_field(
         string_field(),
-        "openai/clip-vit-base-patch32",
+        "BAAI/AltCLIP",
         alias=MultilingualString(en="Model name", es="Nombre del modelo"),
         description=MultilingualString(
-            en="Hugging Face model ID for the CLIP checkpoint to use.",
-            es="ID del modelo Hugging Face para el checkpoint CLIP a usar.",
+            en="Hugging Face model ID for the AltCLIP checkpoint to use.",
+            es="ID del modelo Hugging Face para el checkpoint AltCLIP a usar.",
         ),
     )  # type: ignore
     prompt_template: schema_field(
@@ -47,10 +38,10 @@ class CLIPZeroShotClassifierSchema(BaseSchema):
     batch_size: schema_field(
         int_field(ge=1),
         32,
-        alias=MultilingualString(en="Batch size", es="Tama\u00f1o de lote"),
+        alias=MultilingualString(en="Batch size", es="Tamaño de lote"),
         description=MultilingualString(
             en="Number of images processed together during inference.",
-            es="N\u00famero de im\u00e1genes procesadas juntas durante la inferencia.",
+            es="Número de imágenes procesadas juntas durante la inferencia.",
         ),
     )  # type: ignore
     device: schema_field(
@@ -59,25 +50,35 @@ class CLIPZeroShotClassifierSchema(BaseSchema):
         alias=MultilingualString(en="Device", es="Dispositivo"),
         description=MultilingualString(
             en="Compute device: automatic selection, CPU, or CUDA.",
-            es="Dispositivo de c\u00f3mputo: selecci\u00f3n autom\u00e1tica, CPU o CUDA.",
+            es="Dispositivo de cómputo: selección automática, CPU o CUDA.",
         ),
     )  # type: ignore
 
 
-class CLIPZeroShotClassifier(BaseModel):
-    SCHEMA = CLIPZeroShotClassifierSchema
+class AltCLIPZeroShotClassifier(BaseModel):
+    """Zero-shot image classifier backed by a Hugging Face AltCLIP checkpoint.
+
+    AltCLIP swaps CLIP's text tower for a multilingual XLM-R encoder while
+    keeping the same joint-softmax scoring
+    (``softmax(logit_scale.exp() * cos_sim)``), so it is a good fit for class
+    labels or prompts written in languages other than English.
+    """
+
+    SCHEMA = AltCLIPZeroShotClassifierSchema
     COMPATIBLE_COMPONENTS: ClassVar[list[str]] = ["ImageClassificationTask"]
-    DISPLAY_NAME = MultilingualString(en="CLIP Zero-Shot", es="CLIP Zero-Shot")
+    DISPLAY_NAME = MultilingualString(en="AltCLIP Zero-Shot", es="AltCLIP Zero-Shot")
     DESCRIPTION = MultilingualString(
-        en="Classify images by comparing them with text prompts, without fine-tuning.",
-        es="Clasifica im\u00e1genes compar\u00e1ndolas con prompts de texto, sin ajuste fino.",
+        en="Classify images by comparing them with multilingual text prompts, "
+        "without fine-tuning.",
+        es="Clasifica imágenes comparándolas con prompts de texto multilingües, "
+        "sin ajuste fino.",
     )
-    COLOR = "#5B4BDB"
+    COLOR = "#B24C63"
     ICON = "ImageSearch"
 
     def __init__(
         self,
-        model_name="openai/clip-vit-base-patch32",
+        model_name="BAAI/AltCLIP",
         prompt_template="a photo of a {}",
         batch_size=32,
         device="auto",
@@ -101,7 +102,7 @@ class CLIPZeroShotClassifier(BaseModel):
     def _extract_class_names(self, y_train):
         if len(y_train.column_names) != 1:
             raise ValueError(
-                "CLIPZeroShotClassifier requires exactly one output column"
+                "AltCLIPZeroShotClassifier requires exactly one output column"
             )
         column = y_train.column_names[0]
         output_type = (getattr(y_train, "types", {}) or {}).get(column)
@@ -119,19 +120,19 @@ class CLIPZeroShotClassifier(BaseModel):
 
         try:
             if self.model is None or self.processor is None:
-                from transformers import CLIPModel, CLIPProcessor
+                from transformers import AltCLIPModel, AltCLIPProcessor
 
                 if self.model is None:
-                    self.model = CLIPModel.from_pretrained(self.model_name)
+                    self.model = AltCLIPModel.from_pretrained(self.model_name)
                 if self.processor is None:
-                    self.processor = CLIPProcessor.from_pretrained(self.model_name)
+                    self.processor = AltCLIPProcessor.from_pretrained(self.model_name)
             self.model.to(self.device)
             self.model.eval()
         except torch.cuda.OutOfMemoryError:
             raise
         except Exception as exc:
             raise RuntimeError(
-                f"Unable to load CLIP checkpoint '{self.model_name}'"
+                f"Unable to load AltCLIP checkpoint '{self.model_name}'"
             ) from exc
 
     def _prepare_text_features(self):
@@ -141,7 +142,9 @@ class CLIPZeroShotClassifier(BaseModel):
         inputs = self.processor(text=prompts, padding=True, return_tensors="pt")
         inputs = {name: value.to(self.device) for name, value in inputs.items()}
         with torch.inference_mode():
-            text_features = _extract_embedding(self.model.get_text_features(**inputs))
+            text_features = extract_pooled_embedding(
+                self.model.get_text_features(**inputs)
+            )
         denominator = text_features.norm(p=2, dim=-1, keepdim=True).clamp_min(
             torch.finfo(text_features.dtype).eps
         )
@@ -161,11 +164,11 @@ class CLIPZeroShotClassifier(BaseModel):
     def prepare_output(self, dataset, is_fit=False):
         if not self.label_to_idx:
             raise RuntimeError(
-                "CLIPZeroShotClassifier class labels are not initialized"
+                "AltCLIPZeroShotClassifier class labels are not initialized"
             )
         if len(dataset.column_names) != 1:
             raise ValueError(
-                "CLIPZeroShotClassifier requires exactly one output column"
+                "AltCLIPZeroShotClassifier requires exactly one output column"
             )
         column = dataset.column_names[0]
         try:
@@ -188,11 +191,13 @@ class CLIPZeroShotClassifier(BaseModel):
 
         if not self.class_names:
             raise RuntimeError(
-                "CLIPZeroShotClassifier must be trained or loaded before prediction; "
-                "call train or load first"
+                "AltCLIPZeroShotClassifier must be trained or loaded before "
+                "prediction; call train or load first"
             )
         if len(x.column_names) != 1:
-            raise ValueError("CLIPZeroShotClassifier requires exactly one input column")
+            raise ValueError(
+                "AltCLIPZeroShotClassifier requires exactly one input column"
+            )
 
         if len(x) == 0:
             return np.empty((0, len(self.class_names)), dtype=np.float32)
@@ -217,7 +222,7 @@ class CLIPZeroShotClassifier(BaseModel):
                     name: value.to(self.device) for name, value in image_inputs.items()
                 }
                 with torch.inference_mode():
-                    image_features = _extract_embedding(
+                    image_features = extract_pooled_embedding(
                         self.model.get_image_features(**image_inputs)
                     )
                     denominator = image_features.norm(dim=-1, keepdim=True).clamp_min(
@@ -235,7 +240,7 @@ class CLIPZeroShotClassifier(BaseModel):
             return np.concatenate(batches, axis=0)
         except torch.cuda.OutOfMemoryError as exc:
             raise RuntimeError(
-                "CUDA out of memory during CLIP inference; "
+                "CUDA out of memory during AltCLIP inference; "
                 f"try reducing batch_size (currently {self.batch_size})"
             ) from exc
 
@@ -268,9 +273,9 @@ class CLIPZeroShotClassifier(BaseModel):
             "class_names",
         }
         if not isinstance(state, dict) or required - state.keys():
-            raise ValueError("Invalid CLIPZeroShotClassifier checkpoint")
+            raise ValueError("Invalid AltCLIPZeroShotClassifier checkpoint")
         if state["format_version"] != 1:
-            raise ValueError("Unsupported CLIPZeroShotClassifier checkpoint version")
+            raise ValueError("Unsupported AltCLIPZeroShotClassifier checkpoint version")
         instance = cls(
             model_name=state["model_name"],
             prompt_template=state["prompt_template"],
