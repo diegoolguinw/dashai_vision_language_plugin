@@ -82,6 +82,17 @@ class FakeCLIPModel(torch.nn.Module):
         return torch.eye(len(input_ids), 2)
 
 
+class FakeCLIPModelWithPooling(FakeCLIPModel):
+    """Mirrors transformers>=5, where get_*_features() returns a
+    BaseModelOutputWithPooling instead of a plain tensor."""
+
+    def get_image_features(self, pixel_values):
+        return SimpleNamespace(pooler_output=super().get_image_features(pixel_values))
+
+    def get_text_features(self, input_ids):
+        return SimpleNamespace(pooler_output=super().get_text_features(input_ids))
+
+
 @pytest.fixture
 def categorical_type():
     return SimpleNamespace(categories=["dog", "cat"])
@@ -91,6 +102,15 @@ def categorical_type():
 def fake_backend():
     return SimpleNamespace(
         model=FakeCLIPModel(),
+        processor=FakeProcessor(),
+        text_features=torch.eye(2),
+    )
+
+
+@pytest.fixture
+def fake_backend_with_pooling():
+    return SimpleNamespace(
+        model=FakeCLIPModelWithPooling(),
         processor=FakeProcessor(),
         text_features=torch.eye(2),
     )
