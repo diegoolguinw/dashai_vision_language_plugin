@@ -109,6 +109,24 @@ def test_train_prepares_text_without_gradients_or_parameter_changes():
     assert [parameter.requires_grad for parameter in after] == flags
 
 
+def test_train_unwraps_pooled_text_output_from_newer_transformers():
+    class PoolingRecordingModel(RecordingModel):
+        def get_text_features(self, **inputs):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(pooler_output=super().get_text_features(**inputs))
+
+    component = CLIPZeroShotClassifier(device="cpu")
+    component.model = PoolingRecordingModel()
+    component.processor = RecordingProcessor()
+
+    component.train(FakeDataset("image", []), FakeDataset("label", ["cat", "dog"]))
+
+    assert torch.allclose(
+        component._text_features, torch.tensor([[0.6, 0.8], [0.0, 0.0]])
+    )
+
+
 def test_ensure_backend_loads_checkpoint_lazily(monkeypatch):
     model = RecordingModel()
     processor = RecordingProcessor()
@@ -238,6 +256,22 @@ def test_predict_returns_ordered_probabilities_in_batches(fake_backend):
     assert np.all(probabilities >= 0)
     assert probabilities.argmax(axis=1).tolist() == [0, 1, 0]
     assert component.processor.image_batch_sizes == [2, 1]
+
+
+def test_predict_unwraps_pooled_output_from_newer_transformers(
+    fake_backend_with_pooling,
+):
+    component = _fitted_component(fake_backend_with_pooling)
+    dataset = FakeDataset(
+        "image",
+        [FakeImage("red"), FakeImage("blue"), FakeImage("red")],
+    )
+
+    probabilities = component.predict(dataset)
+
+    assert probabilities.shape == (3, 2)
+    np.testing.assert_allclose(probabilities.sum(axis=1), 1.0, atol=1e-6)
+    assert probabilities.argmax(axis=1).tolist() == [0, 1, 0]
 
 
 def test_predict_applies_normalization_scale_and_inference_mode(fake_backend):

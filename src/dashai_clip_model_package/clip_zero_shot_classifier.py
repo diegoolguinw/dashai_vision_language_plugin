@@ -15,6 +15,16 @@ from dashai_clip_model_package.device import resolve_device
 from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
 
 
+def _extract_embedding(output):
+    """Unwrap the projected embedding tensor from a CLIP feature call.
+
+    Transformers >=5 returns a ``BaseModelOutputWithPooling`` whose
+    ``pooler_output`` holds the projected embedding; older releases (and the
+    test fakes) return the tensor directly.
+    """
+    return output.pooler_output if hasattr(output, "pooler_output") else output
+
+
 class CLIPZeroShotClassifierSchema(BaseSchema):
     model_name: schema_field(
         string_field(),
@@ -131,7 +141,7 @@ class CLIPZeroShotClassifier(BaseModel):
         inputs = self.processor(text=prompts, padding=True, return_tensors="pt")
         inputs = {name: value.to(self.device) for name, value in inputs.items()}
         with torch.inference_mode():
-            text_features = self.model.get_text_features(**inputs)
+            text_features = _extract_embedding(self.model.get_text_features(**inputs))
         denominator = text_features.norm(p=2, dim=-1, keepdim=True).clamp_min(
             torch.finfo(text_features.dtype).eps
         )
@@ -207,7 +217,9 @@ class CLIPZeroShotClassifier(BaseModel):
                     name: value.to(self.device) for name, value in image_inputs.items()
                 }
                 with torch.inference_mode():
-                    image_features = self.model.get_image_features(**image_inputs)
+                    image_features = _extract_embedding(
+                        self.model.get_image_features(**image_inputs)
+                    )
                     denominator = image_features.norm(dim=-1, keepdim=True).clamp_min(
                         torch.finfo(image_features.dtype).eps
                     )
