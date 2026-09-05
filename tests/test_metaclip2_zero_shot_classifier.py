@@ -6,7 +6,7 @@ import pytest
 import torch
 from conftest import BatchEncoding, DeviceTrackingTensor, FakeDataset, FakeImage
 
-from dashai_clip_model_package.metaclip2_zero_shot_classifier import (
+from dashai_vision_language_plugin.metaclip2_zero_shot_classifier import (
     MetaCLIP2ZeroShotClassifier,
     MetaCLIP2ZeroShotClassifierSchema,
 )

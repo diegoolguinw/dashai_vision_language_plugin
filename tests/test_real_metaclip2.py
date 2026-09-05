@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from dashai_clip_model_package import MetaCLIP2ZeroShotClassifier
+from dashai_vision_language_plugin import MetaCLIP2ZeroShotClassifier
 
 
 @pytest.mark.integration

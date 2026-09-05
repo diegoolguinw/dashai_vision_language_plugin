@@ -11,9 +11,9 @@ from DashAI.back.core.schema_fields.base_schema import BaseSchema
 from DashAI.back.core.utils import MultilingualString
 from DashAI.back.models.base_model import BaseModel
 
-from dashai_clip_model_package.device import resolve_device
-from dashai_clip_model_package.hf_compat import extract_pooled_embedding
-from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
+from dashai_vision_language_plugin.device import resolve_device
+from dashai_vision_language_plugin.hf_compat import extract_pooled_embedding
+from dashai_vision_language_plugin.prompts import build_prompts, validate_prompt_template
 
 
 class CLIPZeroShotClassifierSchema(BaseSchema):

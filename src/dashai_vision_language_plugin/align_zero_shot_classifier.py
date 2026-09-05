@@ -11,19 +11,19 @@ from DashAI.back.core.schema_fields.base_schema import BaseSchema
 from DashAI.back.core.utils import MultilingualString
 from DashAI.back.models.base_model import BaseModel
 
-from dashai_clip_model_package.device import resolve_device
-from dashai_clip_model_package.hf_compat import extract_pooled_embedding
-from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
+from dashai_vision_language_plugin.device import resolve_device
+from dashai_vision_language_plugin.hf_compat import extract_pooled_embedding
+from dashai_vision_language_plugin.prompts import build_prompts, validate_prompt_template
 
 
-class AltCLIPZeroShotClassifierSchema(BaseSchema):
+class ALIGNZeroShotClassifierSchema(BaseSchema):
     model_name: schema_field(
         string_field(),
-        "BAAI/AltCLIP",
+        "kakaobrain/align-base",
         alias=MultilingualString(en="Model name", es="Nombre del modelo"),
         description=MultilingualString(
-            en="Hugging Face model ID for the AltCLIP checkpoint to use.",
-            es="ID del modelo Hugging Face para el checkpoint AltCLIP a usar.",
+            en="Hugging Face model ID for the ALIGN checkpoint to use.",
+            es="ID del modelo Hugging Face para el checkpoint ALIGN a usar.",
         ),
     )  # type: ignore
     prompt_template: schema_field(
@@ -55,30 +55,30 @@ class AltCLIPZeroShotClassifierSchema(BaseSchema):
     )  # type: ignore
 
 
-class AltCLIPZeroShotClassifier(BaseModel):
-    """Zero-shot image classifier backed by a Hugging Face AltCLIP checkpoint.
+class ALIGNZeroShotClassifier(BaseModel):
+    """Zero-shot image classifier backed by a Hugging Face ALIGN checkpoint.
 
-    AltCLIP swaps CLIP's text tower for a multilingual XLM-R encoder while
-    keeping the same joint-softmax scoring
-    (``softmax(logit_scale.exp() * cos_sim)``), so it is a good fit for class
-    labels or prompts written in languages other than English.
+    ALIGN pairs an EfficientNet vision encoder with a BERT text encoder.
+    Unlike CLIP's ``logit_scale.exp()`` multiplier, ALIGN divides cosine
+    similarity by a learned scalar ``temperature`` before a joint softmax
+    over labels (``softmax(cos_sim / temperature)``); it has no separate
+    per-modality projection layer on the image side (the pooled vision
+    features are used directly).
     """
 
-    SCHEMA = AltCLIPZeroShotClassifierSchema
+    SCHEMA = ALIGNZeroShotClassifierSchema
     COMPATIBLE_COMPONENTS: ClassVar[list[str]] = ["ImageClassificationTask"]
-    DISPLAY_NAME = MultilingualString(en="AltCLIP Zero-Shot", es="AltCLIP Zero-Shot")
+    DISPLAY_NAME = MultilingualString(en="ALIGN Zero-Shot", es="ALIGN Zero-Shot")
     DESCRIPTION = MultilingualString(
-        en="Classify images by comparing them with multilingual text prompts, "
-        "without fine-tuning.",
-        es="Clasifica imágenes comparándolas con prompts de texto multilingües, "
-        "sin ajuste fino.",
+        en="Classify images by comparing them with text prompts, without fine-tuning.",
+        es="Clasifica imágenes comparándolas con prompts de texto, sin ajuste fino.",
     )
-    COLOR = "#B24C63"
+    COLOR = "#C97B2C"
     ICON = "ImageSearch"
 
     def __init__(
         self,
-        model_name="BAAI/AltCLIP",
+        model_name="kakaobrain/align-base",
         prompt_template="a photo of a {}",
         batch_size=32,
         device="auto",
@@ -102,7 +102,7 @@ class AltCLIPZeroShotClassifier(BaseModel):
     def _extract_class_names(self, y_train):
         if len(y_train.column_names) != 1:
             raise ValueError(
-                "AltCLIPZeroShotClassifier requires exactly one output column"
+                "ALIGNZeroShotClassifier requires exactly one output column"
             )
         column = y_train.column_names[0]
         output_type = (getattr(y_train, "types", {}) or {}).get(column)
@@ -120,19 +120,19 @@ class AltCLIPZeroShotClassifier(BaseModel):
 
         try:
             if self.model is None or self.processor is None:
-                from transformers import AltCLIPModel, AltCLIPProcessor
+                from transformers import AlignModel, AlignProcessor
 
                 if self.model is None:
-                    self.model = AltCLIPModel.from_pretrained(self.model_name)
+                    self.model = AlignModel.from_pretrained(self.model_name)
                 if self.processor is None:
-                    self.processor = AltCLIPProcessor.from_pretrained(self.model_name)
+                    self.processor = AlignProcessor.from_pretrained(self.model_name)
             self.model.to(self.device)
             self.model.eval()
         except torch.cuda.OutOfMemoryError:
             raise
         except Exception as exc:
             raise RuntimeError(
-                f"Unable to load AltCLIP checkpoint '{self.model_name}'"
+                f"Unable to load ALIGN checkpoint '{self.model_name}'"
             ) from exc
 
     def _prepare_text_features(self):
@@ -164,11 +164,11 @@ class AltCLIPZeroShotClassifier(BaseModel):
     def prepare_output(self, dataset, is_fit=False):
         if not self.label_to_idx:
             raise RuntimeError(
-                "AltCLIPZeroShotClassifier class labels are not initialized"
+                "ALIGNZeroShotClassifier class labels are not initialized"
             )
         if len(dataset.column_names) != 1:
             raise ValueError(
-                "AltCLIPZeroShotClassifier requires exactly one output column"
+                "ALIGNZeroShotClassifier requires exactly one output column"
             )
         column = dataset.column_names[0]
         try:
@@ -191,12 +191,12 @@ class AltCLIPZeroShotClassifier(BaseModel):
 
         if not self.class_names:
             raise RuntimeError(
-                "AltCLIPZeroShotClassifier must be trained or loaded before "
+                "ALIGNZeroShotClassifier must be trained or loaded before "
                 "prediction; call train or load first"
             )
         if len(x.column_names) != 1:
             raise ValueError(
-                "AltCLIPZeroShotClassifier requires exactly one input column"
+                "ALIGNZeroShotClassifier requires exactly one input column"
             )
 
         if len(x) == 0:
@@ -230,17 +230,15 @@ class AltCLIPZeroShotClassifier(BaseModel):
                     )
                     image_features = image_features / denominator
                     logits = (
-                        self.model.logit_scale.exp()
-                        * image_features
-                        @ self._text_features.T
-                    )
+                        image_features @ self._text_features.T
+                    ) / self.model.temperature
                     batches.append(
                         torch.softmax(logits, dim=-1).cpu().numpy().astype(np.float32)
                     )
             return np.concatenate(batches, axis=0)
         except torch.cuda.OutOfMemoryError as exc:
             raise RuntimeError(
-                "CUDA out of memory during AltCLIP inference; "
+                "CUDA out of memory during ALIGN inference; "
                 f"try reducing batch_size (currently {self.batch_size})"
             ) from exc
 
@@ -273,9 +271,9 @@ class AltCLIPZeroShotClassifier(BaseModel):
             "class_names",
         }
         if not isinstance(state, dict) or required - state.keys():
-            raise ValueError("Invalid AltCLIPZeroShotClassifier checkpoint")
+            raise ValueError("Invalid ALIGNZeroShotClassifier checkpoint")
         if state["format_version"] != 1:
-            raise ValueError("Unsupported AltCLIPZeroShotClassifier checkpoint version")
+            raise ValueError("Unsupported ALIGNZeroShotClassifier checkpoint version")
         instance = cls(
             model_name=state["model_name"],
             prompt_template=state["prompt_template"],

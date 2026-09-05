@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from dashai_clip_model_package.device import resolve_device
+from dashai_vision_language_plugin.device import resolve_device
 
 
 def test_auto_uses_cpu_without_cuda(monkeypatch):

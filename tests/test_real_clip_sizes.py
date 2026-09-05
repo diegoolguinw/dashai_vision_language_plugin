@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from dashai_clip_model_package import (
+from dashai_vision_language_plugin import (
     CLIPViTB16ZeroShotClassifier,
     CLIPViTB32ZeroShotClassifier,
     CLIPViTL14ZeroShotClassifier,

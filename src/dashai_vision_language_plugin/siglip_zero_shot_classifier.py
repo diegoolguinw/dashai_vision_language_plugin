@@ -11,19 +11,19 @@ from DashAI.back.core.schema_fields.base_schema import BaseSchema
 from DashAI.back.core.utils import MultilingualString
 from DashAI.back.models.base_model import BaseModel
 
-from dashai_clip_model_package.device import resolve_device
-from dashai_clip_model_package.hf_compat import extract_pooled_embedding
-from dashai_clip_model_package.prompts import build_prompts, validate_prompt_template
+from dashai_vision_language_plugin.device import resolve_device
+from dashai_vision_language_plugin.hf_compat import extract_pooled_embedding
+from dashai_vision_language_plugin.prompts import build_prompts, validate_prompt_template
 
 
-class ALIGNZeroShotClassifierSchema(BaseSchema):
+class SigLIPZeroShotClassifierSchema(BaseSchema):
     model_name: schema_field(
         string_field(),
-        "kakaobrain/align-base",
+        "google/siglip-base-patch16-224",
         alias=MultilingualString(en="Model name", es="Nombre del modelo"),
         description=MultilingualString(
-            en="Hugging Face model ID for the ALIGN checkpoint to use.",
-            es="ID del modelo Hugging Face para el checkpoint ALIGN a usar.",
+            en="Hugging Face model ID for the SigLIP checkpoint to use.",
+            es="ID del modelo Hugging Face para el checkpoint SigLIP a usar.",
         ),
     )  # type: ignore
     prompt_template: schema_field(
@@ -55,30 +55,32 @@ class ALIGNZeroShotClassifierSchema(BaseSchema):
     )  # type: ignore
 
 
-class ALIGNZeroShotClassifier(BaseModel):
-    """Zero-shot image classifier backed by a Hugging Face ALIGN checkpoint.
+class SigLIPZeroShotClassifier(BaseModel):
+    """Zero-shot image classifier backed by a Hugging Face SigLIP checkpoint.
 
-    ALIGN pairs an EfficientNet vision encoder with a BERT text encoder.
-    Unlike CLIP's ``logit_scale.exp()`` multiplier, ALIGN divides cosine
-    similarity by a learned scalar ``temperature`` before a joint softmax
-    over labels (``softmax(cos_sim / temperature)``); it has no separate
-    per-modality projection layer on the image side (the pooled vision
-    features are used directly).
+    Unlike CLIP, SigLIP is trained with a sigmoid loss: each image-label pair
+    is scored independently via ``sigmoid(logit_scale.exp() * cos_sim +
+    logit_bias)`` instead of a joint softmax over labels, and its processor
+    requires fixed-length text padding (the model was trained that way). To
+    keep the output compatible with dashAI's classification metrics (which
+    expect a per-sample categorical distribution), the independent sigmoid
+    scores are renormalized to sum to 1; this does not change the argmax
+    prediction, only the reported non-argmax probabilities.
     """
 
-    SCHEMA = ALIGNZeroShotClassifierSchema
+    SCHEMA = SigLIPZeroShotClassifierSchema
     COMPATIBLE_COMPONENTS: ClassVar[list[str]] = ["ImageClassificationTask"]
-    DISPLAY_NAME = MultilingualString(en="ALIGN Zero-Shot", es="ALIGN Zero-Shot")
+    DISPLAY_NAME = MultilingualString(en="SigLIP Zero-Shot", es="SigLIP Zero-Shot")
     DESCRIPTION = MultilingualString(
         en="Classify images by comparing them with text prompts, without fine-tuning.",
         es="Clasifica imágenes comparándolas con prompts de texto, sin ajuste fino.",
     )
-    COLOR = "#C97B2C"
+    COLOR = "#2E9E8F"
     ICON = "ImageSearch"
 
     def __init__(
         self,
-        model_name="kakaobrain/align-base",
+        model_name="google/siglip-base-patch16-224",
         prompt_template="a photo of a {}",
         batch_size=32,
         device="auto",
@@ -102,7 +104,7 @@ class ALIGNZeroShotClassifier(BaseModel):
     def _extract_class_names(self, y_train):
         if len(y_train.column_names) != 1:
             raise ValueError(
-                "ALIGNZeroShotClassifier requires exactly one output column"
+                "SigLIPZeroShotClassifier requires exactly one output column"
             )
         column = y_train.column_names[0]
         output_type = (getattr(y_train, "types", {}) or {}).get(column)
@@ -120,26 +122,26 @@ class ALIGNZeroShotClassifier(BaseModel):
 
         try:
             if self.model is None or self.processor is None:
-                from transformers import AlignModel, AlignProcessor
+                from transformers import SiglipModel, SiglipProcessor
 
                 if self.model is None:
-                    self.model = AlignModel.from_pretrained(self.model_name)
+                    self.model = SiglipModel.from_pretrained(self.model_name)
                 if self.processor is None:
-                    self.processor = AlignProcessor.from_pretrained(self.model_name)
+                    self.processor = SiglipProcessor.from_pretrained(self.model_name)
             self.model.to(self.device)
             self.model.eval()
         except torch.cuda.OutOfMemoryError:
             raise
         except Exception as exc:
             raise RuntimeError(
-                f"Unable to load ALIGN checkpoint '{self.model_name}'"
+                f"Unable to load SigLIP checkpoint '{self.model_name}'"
             ) from exc
 
     def _prepare_text_features(self):
         import torch
 
         prompts = build_prompts(self.class_names, self.prompt_template)
-        inputs = self.processor(text=prompts, padding=True, return_tensors="pt")
+        inputs = self.processor(text=prompts, padding="max_length", return_tensors="pt")
         inputs = {name: value.to(self.device) for name, value in inputs.items()}
         with torch.inference_mode():
             text_features = extract_pooled_embedding(
@@ -164,11 +166,11 @@ class ALIGNZeroShotClassifier(BaseModel):
     def prepare_output(self, dataset, is_fit=False):
         if not self.label_to_idx:
             raise RuntimeError(
-                "ALIGNZeroShotClassifier class labels are not initialized"
+                "SigLIPZeroShotClassifier class labels are not initialized"
             )
         if len(dataset.column_names) != 1:
             raise ValueError(
-                "ALIGNZeroShotClassifier requires exactly one output column"
+                "SigLIPZeroShotClassifier requires exactly one output column"
             )
         column = dataset.column_names[0]
         try:
@@ -191,12 +193,12 @@ class ALIGNZeroShotClassifier(BaseModel):
 
         if not self.class_names:
             raise RuntimeError(
-                "ALIGNZeroShotClassifier must be trained or loaded before "
+                "SigLIPZeroShotClassifier must be trained or loaded before "
                 "prediction; call train or load first"
             )
         if len(x.column_names) != 1:
             raise ValueError(
-                "ALIGNZeroShotClassifier requires exactly one input column"
+                "SigLIPZeroShotClassifier requires exactly one input column"
             )
 
         if len(x) == 0:
@@ -231,14 +233,17 @@ class ALIGNZeroShotClassifier(BaseModel):
                     image_features = image_features / denominator
                     logits = (
                         image_features @ self._text_features.T
-                    ) / self.model.temperature
-                    batches.append(
-                        torch.softmax(logits, dim=-1).cpu().numpy().astype(np.float32)
+                    ) * self.model.logit_scale.exp() + self.model.logit_bias
+                    scores = torch.sigmoid(logits)
+                    denom = scores.sum(dim=-1, keepdim=True).clamp_min(
+                        torch.finfo(scores.dtype).eps
                     )
+                    probabilities = scores / denom
+                    batches.append(probabilities.cpu().numpy().astype(np.float32))
             return np.concatenate(batches, axis=0)
         except torch.cuda.OutOfMemoryError as exc:
             raise RuntimeError(
-                "CUDA out of memory during ALIGN inference; "
+                "CUDA out of memory during SigLIP inference; "
                 f"try reducing batch_size (currently {self.batch_size})"
             ) from exc
 
@@ -271,9 +276,9 @@ class ALIGNZeroShotClassifier(BaseModel):
             "class_names",
         }
         if not isinstance(state, dict) or required - state.keys():
-            raise ValueError("Invalid ALIGNZeroShotClassifier checkpoint")
+            raise ValueError("Invalid SigLIPZeroShotClassifier checkpoint")
         if state["format_version"] != 1:
-            raise ValueError("Unsupported ALIGNZeroShotClassifier checkpoint version")
+            raise ValueError("Unsupported SigLIPZeroShotClassifier checkpoint version")
         instance = cls(
             model_name=state["model_name"],
             prompt_template=state["prompt_template"],
