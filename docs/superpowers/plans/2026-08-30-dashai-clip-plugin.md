@@ -197,9 +197,10 @@ from dashai_clip_model_package.prompts import build_prompts, validate_prompt_tem
 
 
 def test_build_prompts_normalizes_underscores():
-    assert build_prompts(
-        ["cat", "golden_retriever"], "a photo of a {}"
-    ) == ["a photo of a cat", "a photo of a golden retriever"]
+    assert build_prompts(["cat", "golden_retriever"], "a photo of a {}") == [
+        "a photo of a cat",
+        "a photo of a golden retriever",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -806,8 +807,12 @@ def load(cls, filename):
 
     state = torch.load(filename, map_location="cpu", weights_only=True)
     required = {
-        "format_version", "model_name", "prompt_template", "batch_size",
-        "device_name", "class_names",
+        "format_version",
+        "model_name",
+        "prompt_template",
+        "batch_size",
+        "device_name",
+        "class_names",
     }
     if not isinstance(state, dict) or required - state.keys():
         raise ValueError("Invalid CLIPZeroShotClassifier checkpoint")

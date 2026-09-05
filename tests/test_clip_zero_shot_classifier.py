@@ -90,14 +90,17 @@ def test_train_prepares_text_without_gradients_or_parameter_changes():
     before = [parameter.detach().clone() for parameter in component.model.parameters()]
     flags = [parameter.requires_grad for parameter in component.model.parameters()]
 
-    component.train(
-        FakeDataset("image", []), FakeDataset("label", ["cat", "dog"])
-    )
+    component.train(FakeDataset("image", []), FakeDataset("label", ["cat", "dog"]))
 
     assert component.model.training is False
     assert component.model.text_grad_enabled is False
-    assert all(tensor.devices == [torch.device("cpu")] for tensor in component.processor.tensors)
-    assert all(value.device.type == "cpu" for value in component.model.text_inputs.values())
+    assert all(
+        tensor.devices == [torch.device("cpu")]
+        for tensor in component.processor.tensors
+    )
+    assert all(
+        value.device.type == "cpu" for value in component.model.text_inputs.values()
+    )
     assert torch.allclose(
         component._text_features, torch.tensor([[0.6, 0.8], [0.0, 0.0]])
     )
@@ -419,9 +422,7 @@ def test_load_rejects_malformed_checkpoint(tmp_path):
     path = tmp_path / "clip.pt"
     torch.save({"format_version": 1}, path)
 
-    with pytest.raises(
-        ValueError, match="Invalid CLIPZeroShotClassifier checkpoint"
-    ):
+    with pytest.raises(ValueError, match="Invalid CLIPZeroShotClassifier checkpoint"):
         CLIPZeroShotClassifier.load(path)
 
 

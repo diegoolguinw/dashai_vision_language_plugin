@@ -90,7 +90,9 @@ class CLIPZeroShotClassifier(BaseModel):
 
     def _extract_class_names(self, y_train):
         if len(y_train.column_names) != 1:
-            raise ValueError("CLIPZeroShotClassifier requires exactly one output column")
+            raise ValueError(
+                "CLIPZeroShotClassifier requires exactly one output column"
+            )
         column = y_train.column_names[0]
         output_type = (getattr(y_train, "types", {}) or {}).get(column)
         categories = getattr(output_type, "categories", None)
@@ -140,9 +142,7 @@ class CLIPZeroShotClassifier(BaseModel):
         self.label_to_idx = {
             label: index for index, label in enumerate(self.class_names)
         }
-        self.idx_to_label = {
-            index: label for label, index in self.label_to_idx.items()
-        }
+        self.idx_to_label = {index: label for label, index in self.label_to_idx.items()}
         self._text_features = None
         self._ensure_backend()
         self._prepare_text_features()
@@ -150,9 +150,13 @@ class CLIPZeroShotClassifier(BaseModel):
 
     def prepare_output(self, dataset, is_fit=False):
         if not self.label_to_idx:
-            raise RuntimeError("CLIPZeroShotClassifier class labels are not initialized")
+            raise RuntimeError(
+                "CLIPZeroShotClassifier class labels are not initialized"
+            )
         if len(dataset.column_names) != 1:
-            raise ValueError("CLIPZeroShotClassifier requires exactly one output column")
+            raise ValueError(
+                "CLIPZeroShotClassifier requires exactly one output column"
+            )
         column = dataset.column_names[0]
         try:
             encoded = [self.label_to_idx[value] for value in dataset[column]]
@@ -204,9 +208,9 @@ class CLIPZeroShotClassifier(BaseModel):
                 }
                 with torch.inference_mode():
                     image_features = self.model.get_image_features(**image_inputs)
-                    denominator = image_features.norm(
-                        dim=-1, keepdim=True
-                    ).clamp_min(torch.finfo(image_features.dtype).eps)
+                    denominator = image_features.norm(dim=-1, keepdim=True).clamp_min(
+                        torch.finfo(image_features.dtype).eps
+                    )
                     image_features = image_features / denominator
                     logits = (
                         self.model.logit_scale.exp()

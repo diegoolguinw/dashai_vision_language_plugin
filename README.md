@@ -16,7 +16,7 @@ For local development:
 pip install -e '.[dev]'
 ```
 
-The first prediction downloads the selected Hugging Face CLIP checkpoint unless it is already present in the local Hugging Face cache.
+Training downloads the selected Hugging Face CLIP checkpoint unless it is already present in the local Hugging Face cache. After loading a saved checkpoint (see [Persistence](#persistence)), the checkpoint is instead downloaded lazily before the first prediction.
 
 ## Use in dashAI
 
