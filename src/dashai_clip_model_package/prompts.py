@@ -1,5 +1,5 @@
+from collections.abc import Sequence
 from string import Formatter
-from typing import Sequence
 
 
 def validate_prompt_template(template: str) -> None:

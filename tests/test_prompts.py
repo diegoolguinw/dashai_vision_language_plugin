@@ -4,9 +4,10 @@ from dashai_clip_model_package.prompts import build_prompts, validate_prompt_tem
 
 
 def test_build_prompts_normalizes_underscores():
-    assert build_prompts(
-        ["cat", "golden_retriever"], "a photo of a {}"
-    ) == ["a photo of a cat", "a photo of a golden retriever"]
+    assert build_prompts(["cat", "golden_retriever"], "a photo of a {}") == [
+        "a photo of a cat",
+        "a photo of a golden retriever",
+    ]
 
 
 @pytest.mark.parametrize(
