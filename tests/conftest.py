@@ -93,6 +93,30 @@ class FakeCLIPModelWithPooling(FakeCLIPModel):
         return SimpleNamespace(pooler_output=super().get_text_features(input_ids))
 
 
+class FakeSiglipModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.logit_scale = torch.nn.Parameter(torch.tensor(0.0))
+        self.logit_bias = torch.nn.Parameter(torch.tensor(0.0))
+
+    def get_image_features(self, pixel_values):
+        return pixel_values
+
+    def get_text_features(self, input_ids):
+        return torch.eye(len(input_ids), 2)
+
+
+class FakeSiglipModelWithPooling(FakeSiglipModel):
+    """Mirrors transformers>=5, where get_*_features() returns a
+    BaseModelOutputWithPooling instead of a plain tensor."""
+
+    def get_image_features(self, pixel_values):
+        return SimpleNamespace(pooler_output=super().get_image_features(pixel_values))
+
+    def get_text_features(self, input_ids):
+        return SimpleNamespace(pooler_output=super().get_text_features(input_ids))
+
+
 @pytest.fixture
 def categorical_type():
     return SimpleNamespace(categories=["dog", "cat"])
@@ -111,6 +135,65 @@ def fake_backend():
 def fake_backend_with_pooling():
     return SimpleNamespace(
         model=FakeCLIPModelWithPooling(),
+        processor=FakeProcessor(),
+        text_features=torch.eye(2),
+    )
+
+
+@pytest.fixture
+def fake_siglip_backend():
+    return SimpleNamespace(
+        model=FakeSiglipModel(),
+        processor=FakeProcessor(),
+        text_features=torch.eye(2),
+    )
+
+
+@pytest.fixture
+def fake_siglip_backend_with_pooling():
+    return SimpleNamespace(
+        model=FakeSiglipModelWithPooling(),
+        processor=FakeProcessor(),
+        text_features=torch.eye(2),
+    )
+
+
+class FakeAlignModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.temperature = torch.nn.Parameter(torch.tensor(1.0))
+
+    def get_image_features(self, pixel_values):
+        return pixel_values
+
+    def get_text_features(self, input_ids):
+        return torch.eye(len(input_ids), 2)
+
+
+class FakeAlignModelWithPooling(FakeAlignModel):
+    """Mirrors transformers>=5, where get_*_features() returns a
+    BaseModelOutputWithPooling instead of a plain tensor."""
+
+    def get_image_features(self, pixel_values):
+        return SimpleNamespace(pooler_output=super().get_image_features(pixel_values))
+
+    def get_text_features(self, input_ids):
+        return SimpleNamespace(pooler_output=super().get_text_features(input_ids))
+
+
+@pytest.fixture
+def fake_align_backend():
+    return SimpleNamespace(
+        model=FakeAlignModel(),
+        processor=FakeProcessor(),
+        text_features=torch.eye(2),
+    )
+
+
+@pytest.fixture
+def fake_align_backend_with_pooling():
+    return SimpleNamespace(
+        model=FakeAlignModelWithPooling(),
         processor=FakeProcessor(),
         text_features=torch.eye(2),
     )

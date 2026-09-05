@@ -6,9 +6,9 @@ import pytest
 import torch
 from conftest import BatchEncoding, DeviceTrackingTensor, FakeDataset, FakeImage
 
-from dashai_clip_model_package.clip_zero_shot_classifier import (
-    CLIPZeroShotClassifier,
-    CLIPZeroShotClassifierSchema,
+from dashai_clip_model_package.align_zero_shot_classifier import (
+    ALIGNZeroShotClassifier,
+    ALIGNZeroShotClassifierSchema,
 )
 
 
@@ -48,17 +48,17 @@ class RecordingModel(torch.nn.Module):
 
 
 def test_constructor_is_lazy_and_declares_compatible_task():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
 
     assert component.model is None
     assert component.processor is None
     assert component.device.type == "cpu"
     assert component.COMPATIBLE_COMPONENTS == ["ImageClassificationTask"]
-    assert component.SCHEMA is CLIPZeroShotClassifierSchema
+    assert component.SCHEMA is ALIGNZeroShotClassifierSchema
 
 
 def test_train_preserves_categorical_order(monkeypatch, categorical_type):
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     monkeypatch.setattr(component, "_ensure_backend", lambda: None)
     monkeypatch.setattr(component, "_prepare_text_features", lambda: None)
     x = FakeDataset("image", [FakeImage("red"), FakeImage("blue")])
@@ -73,7 +73,7 @@ def test_train_preserves_categorical_order(monkeypatch, categorical_type):
 
 
 def test_train_fallback_uses_first_seen_order(monkeypatch):
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     monkeypatch.setattr(component, "_ensure_backend", lambda: None)
     monkeypatch.setattr(component, "_prepare_text_features", lambda: None)
     y = FakeDataset("label", ["bird", "cat", "bird", "dog"])
@@ -84,7 +84,7 @@ def test_train_fallback_uses_first_seen_order(monkeypatch):
 
 
 def test_train_prepares_text_without_gradients_or_parameter_changes():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     component.model = RecordingModel()
     component.processor = RecordingProcessor()
     before = [parameter.detach().clone() for parameter in component.model.parameters()]
@@ -116,7 +116,7 @@ def test_train_unwraps_pooled_text_output_from_newer_transformers():
 
             return SimpleNamespace(pooler_output=super().get_text_features(**inputs))
 
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     component.model = PoolingRecordingModel()
     component.processor = RecordingProcessor()
 
@@ -131,23 +131,23 @@ def test_ensure_backend_loads_checkpoint_lazily(monkeypatch):
     model = RecordingModel()
     processor = RecordingProcessor()
 
-    class FakeCLIPModel:
+    class FakeAlignModel:
         @staticmethod
         def from_pretrained(model_name):
             model.checkpoint = model_name
             return model
 
-    class FakeCLIPProcessor:
+    class FakeAlignProcessor:
         @staticmethod
         def from_pretrained(model_name):
             processor.checkpoint = model_name
             return processor
 
     fake_transformers = types.ModuleType("transformers")
-    fake_transformers.CLIPModel = FakeCLIPModel
-    fake_transformers.CLIPProcessor = FakeCLIPProcessor
+    fake_transformers.AlignModel = FakeAlignModel
+    fake_transformers.AlignProcessor = FakeAlignProcessor
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
-    component = CLIPZeroShotClassifier(model_name="test/checkpoint", device="cpu")
+    component = ALIGNZeroShotClassifier(model_name="test/checkpoint", device="cpu")
 
     component._ensure_backend()
 
@@ -160,19 +160,19 @@ def test_ensure_backend_loads_checkpoint_lazily(monkeypatch):
 
 
 def test_ensure_backend_includes_checkpoint_in_load_error(monkeypatch):
-    class FailingCLIPModel:
+    class FailingAlignModel:
         @staticmethod
         def from_pretrained(model_name):
             raise OSError("not available")
 
     fake_transformers = types.ModuleType("transformers")
-    fake_transformers.CLIPModel = FailingCLIPModel
-    fake_transformers.CLIPProcessor = object()
+    fake_transformers.AlignModel = FailingAlignModel
+    fake_transformers.AlignProcessor = object()
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
-    component = CLIPZeroShotClassifier(model_name="missing/checkpoint", device="cpu")
+    component = ALIGNZeroShotClassifier(model_name="missing/checkpoint", device="cpu")
 
     with pytest.raises(
-        RuntimeError, match="Unable to load CLIP checkpoint 'missing/checkpoint'"
+        RuntimeError, match="Unable to load ALIGN checkpoint 'missing/checkpoint'"
     ):
         component._ensure_backend()
 
@@ -180,7 +180,7 @@ def test_ensure_backend_includes_checkpoint_in_load_error(monkeypatch):
 def test_prepare_output_encodes_labels_in_canonical_order():
     from DashAI.back.dataloaders.classes.dashai_dataset import DashAIDataset
 
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     component.label_to_idx = {"dog": 0, "cat": 1}
 
     output = component.prepare_output(FakeDataset("label", ["cat", "dog"]))
@@ -190,14 +190,14 @@ def test_prepare_output_encodes_labels_in_canonical_order():
 
 
 def test_prepare_output_rejects_untrained_class_mapping():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
 
     with pytest.raises(RuntimeError, match="class labels are not initialized"):
         component.prepare_output(FakeDataset("label", ["cat"]))
 
 
 def test_prepare_output_requires_exactly_one_column():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     component.label_to_idx = {"cat": 0}
     dataset = FakeDataset("label", ["cat"])
     dataset.column_names = ["label", "other"]
@@ -207,7 +207,7 @@ def test_prepare_output_requires_exactly_one_column():
 
 
 def test_prepare_output_rejects_unknown_class_label():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     component.label_to_idx = {"cat": 0}
 
     with pytest.raises(ValueError, match="Unknown class label: 'dog'"):
@@ -215,7 +215,7 @@ def test_prepare_output_rejects_unknown_class_label():
 
 
 def test_extract_class_names_rejects_declared_empty_categories():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     empty_categories = types.SimpleNamespace(categories=[])
     y = FakeDataset("label", ["cat"], empty_categories)
 
@@ -224,25 +224,25 @@ def test_extract_class_names_rejects_declared_empty_categories():
 
 
 def test_extract_class_names_rejects_no_observed_labels():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
 
     with pytest.raises(ValueError, match="At least one class label is required"):
         component._extract_class_names(FakeDataset("label", []))
 
 
-def _fitted_component(fake_backend, batch_size=2):
-    component = CLIPZeroShotClassifier(batch_size=batch_size, device="cpu")
-    component.model = fake_backend.model
-    component.processor = fake_backend.processor
+def _fitted_component(fake_align_backend, batch_size=2):
+    component = ALIGNZeroShotClassifier(batch_size=batch_size, device="cpu")
+    component.model = fake_align_backend.model
+    component.processor = fake_align_backend.processor
     component.class_names = ["red", "blue"]
     component.label_to_idx = {"red": 0, "blue": 1}
     component.idx_to_label = {0: "red", 1: "blue"}
-    component._text_features = fake_backend.text_features
+    component._text_features = fake_align_backend.text_features
     return component
 
 
-def test_predict_returns_ordered_probabilities_in_batches(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_returns_ordered_probabilities_in_batches(fake_align_backend):
+    component = _fitted_component(fake_align_backend)
     dataset = FakeDataset(
         "image",
         [FakeImage("red"), FakeImage("blue"), FakeImage("red")],
@@ -259,9 +259,9 @@ def test_predict_returns_ordered_probabilities_in_batches(fake_backend):
 
 
 def test_predict_unwraps_pooled_output_from_newer_transformers(
-    fake_backend_with_pooling,
+    fake_align_backend_with_pooling,
 ):
-    component = _fitted_component(fake_backend_with_pooling)
+    component = _fitted_component(fake_align_backend_with_pooling)
     dataset = FakeDataset(
         "image",
         [FakeImage("red"), FakeImage("blue"), FakeImage("red")],
@@ -274,10 +274,12 @@ def test_predict_unwraps_pooled_output_from_newer_transformers(
     assert probabilities.argmax(axis=1).tolist() == [0, 1, 0]
 
 
-def test_predict_applies_normalization_scale_and_inference_mode(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_applies_temperature_division_softmax_and_inference_mode(
+    fake_align_backend,
+):
+    component = _fitted_component(fake_align_backend)
     with torch.no_grad():
-        component.model.logit_scale.fill_(np.log(2.0))
+        component.model.temperature.fill_(0.5)
     observed = {}
 
     def non_unit_features(pixel_values):
@@ -302,14 +304,14 @@ def test_predict_applies_normalization_scale_and_inference_mode(fake_backend):
 
 
 def test_predict_requires_training_or_loading_class_setup():
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
 
     with pytest.raises(RuntimeError, match="train or load"):
         component.predict(FakeDataset("image", [FakeImage("red")]))
 
 
-def test_predict_returns_empty_float32_array_for_empty_input(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_returns_empty_float32_array_for_empty_input(fake_align_backend):
+    component = _fitted_component(fake_align_backend)
 
     probabilities = component.predict(FakeDataset("image", []))
 
@@ -327,7 +329,7 @@ def test_predict_empty_input_does_not_initialize_the_backend():
             self.to_calls += 1
             raise AssertionError("empty input must not initialize the model")
 
-    component = CLIPZeroShotClassifier(device="cpu")
+    component = ALIGNZeroShotClassifier(device="cpu")
     component.class_names = ["red", "blue"]
     component.model = UntouchedModel()
     component.processor = object()
@@ -338,27 +340,27 @@ def test_predict_empty_input_does_not_initialize_the_backend():
     assert component.model.to_calls == 0
 
 
-def test_predict_identifies_the_undecodable_image_sample(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_identifies_the_undecodable_image_sample(fake_align_backend):
+    component = _fitted_component(fake_align_backend)
 
     with pytest.raises(ValueError, match="Unable to decode image at sample 1"):
         component.predict(FakeDataset("image", [FakeImage("red"), object()]))
 
 
-def test_predict_converts_images_to_rgb(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_converts_images_to_rgb(fake_align_backend):
+    component = _fitted_component(fake_align_backend)
 
     component.predict(FakeDataset("image", [FakeImage(127, mode="L")]))
 
     assert component.processor.image_batches[0][0].mode == "RGB"
 
 
-def test_predict_chains_the_original_image_decode_error(fake_backend):
+def test_predict_chains_the_original_image_decode_error(fake_align_backend):
     class BrokenImage:
         def to_pil(self):
             raise OSError("corrupt image")
 
-    component = _fitted_component(fake_backend)
+    component = _fitted_component(fake_align_backend)
 
     with pytest.raises(ValueError, match="Unable to decode image at sample 0") as error:
         component.predict(FakeDataset("image", [BrokenImage()]))
@@ -366,20 +368,20 @@ def test_predict_chains_the_original_image_decode_error(fake_backend):
     assert isinstance(error.value.__cause__, OSError)
 
 
-def test_predict_requires_exactly_one_input_column(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_requires_exactly_one_input_column(fake_align_backend):
+    component = _fitted_component(fake_align_backend)
     dataset = FakeDataset("image", [FakeImage("red")])
     dataset.column_names = ["image", "other"]
 
     with pytest.raises(
         ValueError,
-        match="CLIPZeroShotClassifier requires exactly one input column",
+        match="ALIGNZeroShotClassifier requires exactly one input column",
     ):
         component.predict(dataset)
 
 
-def test_predict_adds_a_batch_size_hint_to_cuda_out_of_memory(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_adds_a_batch_size_hint_to_cuda_out_of_memory(fake_align_backend):
+    component = _fitted_component(fake_align_backend)
 
     def raise_out_of_memory(**_inputs):
         raise torch.cuda.OutOfMemoryError("simulated CUDA OOM")
@@ -392,8 +394,10 @@ def test_predict_adds_a_batch_size_hint_to_cuda_out_of_memory(fake_backend):
     assert isinstance(error.value.__cause__, torch.cuda.OutOfMemoryError)
 
 
-def test_predict_adds_a_batch_size_hint_to_backend_cuda_out_of_memory(fake_backend):
-    component = _fitted_component(fake_backend)
+def test_predict_adds_a_batch_size_hint_to_backend_cuda_out_of_memory(
+    fake_align_backend,
+):
+    component = _fitted_component(fake_align_backend)
 
     def raise_out_of_memory(_device):
         raise torch.cuda.OutOfMemoryError("simulated backend CUDA OOM")
@@ -407,9 +411,9 @@ def test_predict_adds_a_batch_size_hint_to_backend_cuda_out_of_memory(fake_backe
 
 
 def test_predict_adds_a_batch_size_hint_to_text_feature_cuda_out_of_memory(
-    fake_backend,
+    fake_align_backend,
 ):
-    component = _fitted_component(fake_backend)
+    component = _fitted_component(fake_align_backend)
     component._text_features = None
 
     def raise_out_of_memory(**_inputs):
@@ -424,7 +428,7 @@ def test_predict_adds_a_batch_size_hint_to_text_feature_cuda_out_of_memory(
 
 
 def test_save_load_round_trip_is_lazy(tmp_path):
-    component = CLIPZeroShotClassifier(
+    component = ALIGNZeroShotClassifier(
         model_name="org/checkpoint",
         prompt_template="an image of {}",
         batch_size=7,
@@ -438,7 +442,7 @@ def test_save_load_round_trip_is_lazy(tmp_path):
     path = tmp_path / "clip.pt"
 
     component.save(path)
-    restored = CLIPZeroShotClassifier.load(path)
+    restored = ALIGNZeroShotClassifier.load(path)
 
     assert restored.model_name == "org/checkpoint"
     assert restored.prompt_template == "an image of {}"
@@ -456,8 +460,8 @@ def test_load_rejects_malformed_checkpoint(tmp_path):
     path = tmp_path / "clip.pt"
     torch.save({"format_version": 1}, path)
 
-    with pytest.raises(ValueError, match="Invalid CLIPZeroShotClassifier checkpoint"):
-        CLIPZeroShotClassifier.load(path)
+    with pytest.raises(ValueError, match="Invalid ALIGNZeroShotClassifier checkpoint"):
+        ALIGNZeroShotClassifier.load(path)
 
 
 def test_load_rejects_unsupported_checkpoint_version(tmp_path):
@@ -475,6 +479,6 @@ def test_load_rejects_unsupported_checkpoint_version(tmp_path):
     )
 
     with pytest.raises(
-        ValueError, match="Unsupported CLIPZeroShotClassifier checkpoint version"
+        ValueError, match="Unsupported ALIGNZeroShotClassifier checkpoint version"
     ):
-        CLIPZeroShotClassifier.load(path)
+        ALIGNZeroShotClassifier.load(path)
