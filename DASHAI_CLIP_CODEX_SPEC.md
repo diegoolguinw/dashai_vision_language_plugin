@@ -420,8 +420,7 @@ Do not assume the representation before inspecting the actual implementation.
 Create a small adapter function if needed, for example:
 
 ```python
-def _to_pil_image(value) -> Image.Image:
-    ...
+def _to_pil_image(value) -> Image.Image: ...
 ```
 
 but only if the current framework requires it.
