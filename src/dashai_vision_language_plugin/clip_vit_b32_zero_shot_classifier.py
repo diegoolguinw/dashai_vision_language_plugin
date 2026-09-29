@@ -1,12 +1,12 @@
 from DashAI.back.core.utils import MultilingualString
 
 from dashai_vision_language_plugin.clip_zero_shot_classifier_base import (
-    CLIPZeroShotClassifierBase,
+    CLIPZeroShotClassifier,
     CLIPZeroShotClassifierSchema,
 )
 
 
-class CLIPViTB32ZeroShotClassifier(CLIPZeroShotClassifierBase):
+class CLIPViTB32ZeroShotClassifier(CLIPZeroShotClassifier):
     """CLIP ViT-B/32 zero-shot image classifier. The fastest and smallest
     CLIP checkpoint offered by this plugin; a good default."""
 
