@@ -10,7 +10,7 @@ from dashai_vision_language_plugin.clip_vit_l14_zero_shot_classifier import (
     CLIPViTL14ZeroShotClassifier,
 )
 from dashai_vision_language_plugin.clip_zero_shot_classifier_base import (
-    CLIPZeroShotClassifierBase,
+    CLIPZeroShotClassifier,
 )
 
 VARIANTS = [
@@ -26,7 +26,7 @@ def test_variant_has_fixed_checkpoint_and_no_model_name_parameter(
 ):
     component = component_class(device="cpu")
 
-    assert issubclass(component_class, CLIPZeroShotClassifierBase)
+    assert issubclass(component_class, CLIPZeroShotClassifier)
     assert component.MODEL_NAME == expected_model_name
     assert component.model_name == expected_model_name
     assert "model_name" not in component.SCHEMA.model_fields

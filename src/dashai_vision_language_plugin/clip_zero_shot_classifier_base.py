@@ -46,7 +46,7 @@ class CLIPZeroShotClassifierSchema(BaseSchema):
     )  # type: ignore
 
 
-class CLIPZeroShotClassifierBase(BaseModel):
+class CLIPZeroShotClassifier(BaseModel):
     """Shared implementation for CLIP zero-shot classifiers of a fixed size.
 
     Mirrors dashAI's own convention for same-family, different-size models

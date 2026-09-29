@@ -50,7 +50,7 @@ All three share the same other parameters:
 | `batch_size` | `32` | Number of images processed per inference batch; must be at least 1. |
 | `device` | `auto` | `auto` uses CUDA when available, otherwise CPU; `cpu` forces CPU; `cuda` requires CUDA to be available. |
 
-They score each image-label pair with CLIP's joint softmax over labels (`softmax(logit_scale.exp() * cosine_similarity)`), so the reported probabilities are a standard categorical distribution. Need a different CLIP checkpoint than these three (e.g. a fine-tuned or community variant)? Subclass `CLIPZeroShotClassifierBase` and set `MODEL_NAME`; that's exactly what these three components do.
+They score each image-label pair with CLIP's joint softmax over labels (`softmax(logit_scale.exp() * cosine_similarity)`), so the reported probabilities are a standard categorical distribution. Need a different CLIP checkpoint than these three (e.g. a fine-tuned or community variant)? Subclass `CLIPZeroShotClassifier` and set `MODEL_NAME`; that's exactly what these three components do.
 
 ### SigLIP Zero-Shot (`SigLIPZeroShotClassifier`)
 

@@ -7,12 +7,12 @@ import torch
 from conftest import BatchEncoding, DeviceTrackingTensor, FakeDataset, FakeImage
 
 from dashai_vision_language_plugin.clip_zero_shot_classifier_base import (
-    CLIPZeroShotClassifierBase,
+    CLIPZeroShotClassifier,
     CLIPZeroShotClassifierSchema,
 )
 
 
-class _FixtureCLIPClassifier(CLIPZeroShotClassifierBase):
+class _FixtureCLIPClassifier(CLIPZeroShotClassifier):
     """Concrete subclass used to exercise the shared base logic, mirroring
     how CLIPViTB32ZeroShotClassifier etc. only differ by MODEL_NAME."""
 
