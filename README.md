@@ -1,20 +1,34 @@
 # dashAI Vision-Language plugin
 
-Zero-shot image-classification plugins for [dashAI](https://github.com/DashAISoftware/dashAI). Ships seven components backed by different Hugging Face vision-language checkpoints: **CLIP** (three sizes), **SigLIP**, **ALIGN**, **AltCLIP**, and **MetaCLIP 2**, all Zero-Shot.
+[![PyPI](https://img.shields.io/pypi/v/dashai-vision-language-plugin)](https://pypi.org/project/dashai-vision-language-plugin/)
+[![Python](https://img.shields.io/pypi/pyversions/dashai-vision-language-plugin)](https://pypi.org/project/dashai-vision-language-plugin/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Zero-shot image-classification plugin for [dashAI](https://github.com/DashAISoftware/dashAI). Classify images into any set of labels you choose, with no training or fine-tuning, using pretrained Hugging Face vision-language models.
+
+It adds seven components to dashAI's image classification task, all Zero-Shot: **CLIP** (three sizes), **SigLIP**, **ALIGN**, **AltCLIP**, and **MetaCLIP 2**.
 
 ## Installation
 
-This package is not yet published on PyPI. Install it from source:
+### From dashAI (recommended)
+
+Open the **Plugins** page in dashAI, search for `dashai-vision-language-plugin`, and install it with one click. No restart is needed.
+
+### With pip
+
+Install it in the same Python environment where dashAI runs:
 
 ```bash
-pip install .
+pip install dashai-vision-language-plugin
 ```
 
-For local development:
+Restart dashAI afterwards. It discovers the plugin automatically through the `dashai.plugins` entry point.
 
-```bash
-pip install -e '.[dev]'
-```
+### Requirements
+
+- Python 3.10 or newer
+- dashAI 0.9.7.post2 or newer
+- Internet access the first time you use a model, to download its checkpoint from the Hugging Face Hub (see [System Requirements](#system-requirements))
 
 Training downloads the selected Hugging Face checkpoint unless it is already present in the local Hugging Face cache. After loading a saved checkpoint (see [Persistence](#persistence)), the checkpoint is instead downloaded lazily before the first prediction.
 
@@ -114,7 +128,19 @@ Measured against `CLIPViTB32ZeroShotClassifier`'s checkpoint (`openai/clip-vit-b
 
 Saved checkpoints are intentionally lightweight: they keep component configuration and class labels, not the backbone's model weights. Loading a checkpoint requires the named Hugging Face checkpoint to be available again; it will be re-downloaded when absent from the local cache.
 
-## Development checks
+## Contributing
+
+Issues and pull requests are welcome at [github.com/diegoolguinw/dashai_vision_language_plugin](https://github.com/diegoolguinw/dashai_vision_language_plugin).
+
+Set up a development environment:
+
+```bash
+git clone https://github.com/diegoolguinw/dashai_vision_language_plugin.git
+cd dashai_vision_language_plugin
+python -m venv .venv
+# Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
+pip install -e '.[dev]'
+```
 
 Run the ordinary unit suite (the real-model integration test is excluded by default):
 
@@ -139,3 +165,7 @@ Run the opt-in smoke tests. This downloads and executes all seven real checkpoin
 ```bash
 RUN_CLIP_INTEGRATION=1 python -m pytest -m integration -v
 ```
+
+## License
+
+Released under the [MIT License](LICENSE).
