@@ -166,6 +166,12 @@ Run the opt-in smoke tests. This downloads and executes all seven real checkpoin
 RUN_CLIP_INTEGRATION=1 python -m pytest -m integration -v
 ```
 
+## Author
+
+Diego Olguin-Wende - dolguin at dim dot uchile dot cl
+
+Bug reports and questions: [GitHub Issues](https://github.com/diegoolguinw/dashai_vision_language_plugin/issues).
+
 ## License
 
 Released under the [MIT License](LICENSE).
