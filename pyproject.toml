@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dashai-vision-language-plugin"
-version = "0.1.0"
+version = "0.1.1"
 description = "Vision-language zero-shot image classification for dashAI"
 readme = "README.md"
 requires-python = ">=3.10"
